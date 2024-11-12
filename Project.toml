@@ -1,0 +1,7 @@
+name = "ConvolutionalNeuralOperators"
+uuid = "d769ba41-1544-53e8-a779-241a28c31cef"
+authors = ["SCiarella <simoneciarella@gmail.com>"]
+version = "0.1.0"
+
+[compat]
+julia = "1.10"
