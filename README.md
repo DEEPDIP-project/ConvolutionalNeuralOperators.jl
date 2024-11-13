@@ -12,6 +12,20 @@
 [![All Contributors](https://img.shields.io/github/all-contributors/DEEPDIP-project/ConvolutionalNeuralOperators.jl?labelColor=5e1ec7&color=c0ffee&style=flat-square)](#contributors)
 [![BestieTemplate](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/JuliaBesties/BestieTemplate.jl/main/docs/src/assets/badge.json)](https://github.com/JuliaBesties/BestieTemplate.jl)
 
+This package implements [Convolutional Neural Operators](https://medium.com/@bogdan.raonke/operator-learning-convolutional-neural-operators-for-robust-and-accurate-learning-of-pdes-ebbc43b57434) following [this](https://github.com/camlab-ethz/ConvolutionalNeuralOperator).
+The CNOs can then be used as custom Lux models and they are compatible with [closure modeling](https://github.com/DEEPDIP-project/CoupledNODE.jl).
+
+## Install
+
+```julia
+using Pkg
+Pkg.add("git@github.com:DEEPDIP-project/ConvolutionalNeuralOperator.jl.git")
+```
+
+## Usage
+
+Look in `test/` for examples on how to use the package.
+
 ## How to Cite
 
 If you use ConvolutionalNeuralOperators.jl in your work, please cite using the reference given in [CITATION.cff](https://github.com/DEEPDIP-project/ConvolutionalNeuralOperators.jl/blob/main/CITATION.cff).
