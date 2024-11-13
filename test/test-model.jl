@@ -1,4 +1,4 @@
-using DifferentialEquations: ODEProblem, solve, Tsit5
+using DifferentialEquations: ODEProblem, solve
 using Optimization: Optimization
 using OptimizationOptimisers: OptimiserChain, Adam, ClipGrad
 using Random: Random

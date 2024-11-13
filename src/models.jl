@@ -1,5 +1,4 @@
 using Lux: Lux, relu, leakyrelu
-using NNlib: tanh_fast
 using LuxCore: AbstractLuxLayer
 using Tullio
 
