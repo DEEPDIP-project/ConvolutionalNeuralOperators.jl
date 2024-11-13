@@ -1,11 +1,11 @@
 module ConvolutionalNeuralOperators
 
-"""
-    hi = hello_world()
-A simple function to return "Hello, World!"
-"""
-function hello_world()
-    return "Hello, World!"
-end
+using CUDA: CUDA
+ArrayType = CUDA.functional() ? CUDA.CuArray : Array
+
+include("utils.jl")
+include("models.jl")
+
+export create_CNO, create_CNOdownsampler, create_CNOupsampler
 
 end
