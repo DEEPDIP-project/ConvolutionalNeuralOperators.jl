@@ -5,7 +5,7 @@ using Random: Random
 using TestImages: testimage
 using ComponentArrays: ComponentArray
 using Lux: Lux
-using ConvolutionalNeuralOperator: create_CNOdownsampler, create_CNO
+using ConvolutionalNeuralOperators: create_CNOdownsampler, create_CNO
 using NNlib: tanh_fast
 using Zygote: Zygote
 
