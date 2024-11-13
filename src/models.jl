@@ -1,5 +1,6 @@
 using Lux: Lux, relu, leakyrelu
 using LuxCore: AbstractLuxLayer
+using Random: AbstractRNG
 using Tullio
 
 # Observation: the original CNO paper basically assumes PBC everywhere.
