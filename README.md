@@ -7,7 +7,7 @@
 [![Lint workflow Status](https://github.com/DEEPDIP-project/ConvolutionalNeuralOperators.jl/actions/workflows/Lint.yml/badge.svg?branch=main)](https://github.com/DEEPDIP-project/ConvolutionalNeuralOperators.jl/actions/workflows/Lint.yml?query=branch%3Amain)
 [![Docs workflow Status](https://github.com/DEEPDIP-project/ConvolutionalNeuralOperators.jl/actions/workflows/Docs.yml/badge.svg?branch=main)](https://github.com/DEEPDIP-project/ConvolutionalNeuralOperators.jl/actions/workflows/Docs.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/DEEPDIP-project/ConvolutionalNeuralOperators.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/DEEPDIP-project/ConvolutionalNeuralOperators.jl)
-[![DOI](https://zenodo.org/badge/DOI/FIXME)](https://doi.org/FIXME)
+[![DOI](https://zenodo.org/badge/887124272.svg)](https://doi.org/10.5281/zenodo.14191802)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 [![All Contributors](https://img.shields.io/github/all-contributors/DEEPDIP-project/ConvolutionalNeuralOperators.jl?labelColor=5e1ec7&color=c0ffee&style=flat-square)](#contributors)
 [![BestieTemplate](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/JuliaBesties/BestieTemplate.jl/main/docs/src/assets/badge.json)](https://github.com/JuliaBesties/BestieTemplate.jl)
