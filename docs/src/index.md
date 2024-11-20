@@ -4,7 +4,7 @@ CurrentModule = ConvolutionalNeuralOperators
 
 # ConvolutionalNeuralOperators
 
-Documentation for [ConvolutionalNeuralOperators](https://github.com/DEEPDIP-project/ConvolutionalNeuralOperators.jl).
+This is the documentation for [ConvolutionalNeuralOperators](https://github.com/DEEPDIP-project/ConvolutionalNeuralOperators.jl).
 
 ## Contributors
 
