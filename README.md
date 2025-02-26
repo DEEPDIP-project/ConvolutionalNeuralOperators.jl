@@ -19,7 +19,7 @@ The CNOs can then be used as custom Lux models and they are compatible with [clo
 
 ```julia
 using Pkg
-Pkg.add("git@github.com:DEEPDIP-project/ConvolutionalNeuralOperator.jl.git")
+Pkg.add(url="git@github.com:DEEPDIP-project/ConvolutionalNeuralOperator.jl.git")
 ```
 
 ## Usage
