@@ -428,3 +428,17 @@ end
 function combined_mconv_activation_updown(y, k, mask, activation, updown)
     updown(activation(apply_masked_convolution(y, k = k, mask = mask)))
 end
+
+function cno(kwargs...)
+    if use_cuda
+        dev = Lux.gpu_device()
+    else
+        dev = Lux.cpu_device()
+    end
+    filtered_kwargs = Dict(k => v for (k, v) in kwargs if k != :use_cuda && k != :rng)
+    model = create_CNO(; filtered_kwargs...)
+    params, state = Lux.setup(rng, model)
+    state = state |> dev
+    params = ComponentArray(params) |> dev
+    (model, params, state)
+end

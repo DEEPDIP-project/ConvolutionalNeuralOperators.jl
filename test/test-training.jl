@@ -103,4 +103,49 @@ using Test  # Importing the Test module for @test statements
     loss_final = loss(optim_result.u, 128)
     @test loss_final < loss_0  # Ensure loss decreases after optimization
 
+    # Now test the CUDA wrapper
+    model, θ, st = cno(
+        T = T,
+        N = N,
+        D = D,
+        cutoff = cutoff,
+        ch_sizes = ch_,
+        activations = act,
+        down_factors = df,
+        k_radii = k_rad,
+        bottleneck_depths = bd,
+        rng = rng,
+        use_cuda = false,
+    )
+
+    @info "There are $(length(θ)) parameters"
+
+    @test typeof(model) <: Lux.Chain
+    @test size(model(u, θ, st)[1]) == size(u)
+    function loss(θ, batch = 16)
+        y = rand(T, N, N, 1, batch)
+        y = cat(y, y, dims = 3)
+        yout = model(y, θ, st)[1]
+        return sum(abs2, (yout .- y))
+    end
+    loss_0 = loss(θ, 128)
+    @test isfinite(loss_0)  # Ensure initial loss is a finite number
+    g = Zygote.gradient(θ -> loss(θ), θ)
+    @test !isnothing(g)  # Ensure gradient is calculated successfully
+    function callback(p, l_train)
+        println("Training Loss: $(l_train)")
+        false
+    end
+    optf = Optimization.OptimizationFunction((p, _) -> loss(p), Optimization.AutoZygote())
+    optprob = Optimization.OptimizationProblem(optf, θ)
+    ClipAdam = OptimiserChain(Adam(1.0e-1), ClipGrad(1))
+    optim_result, optim_t, optim_mem, _ = @timed Optimization.solve(
+        optprob,
+        ClipAdam,
+        maxiters = 10,
+        callback = callback,
+        progress = true,
+    )
+    loss_final = loss(optim_result.u, 128)
+    @test loss_final < loss_0
 end
