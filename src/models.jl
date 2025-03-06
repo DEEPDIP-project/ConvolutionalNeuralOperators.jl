@@ -280,6 +280,12 @@ function ((;)::CNO)(x, params, state)
     bottleneck_ranges = state.bottleneck_ranges
     reversed_bottleneck_ranges = state.reversed_bottleneck_ranges
 
+    # Assert that the dimensions of x are correct
+    for i in range(1, D)
+        @assert size(x, i) == N "ERROR: x has dimension $i = $(size(x, i)) but it should be $N"
+    end
+
+
     # we have to keep track of each downsampled state
     intermediate_states = []
 
