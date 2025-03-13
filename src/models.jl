@@ -285,7 +285,6 @@ function ((;)::CNO)(x, params, state)
         @assert size(x, i) == N "ERROR: x has dimension $i = $(size(x, i)) but it should be $N"
     end
 
-
     # we have to keep track of each downsampled state
     intermediate_states = []
 
