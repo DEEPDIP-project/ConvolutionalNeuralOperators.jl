@@ -1,6 +1,8 @@
 using Lux: Lux, relu, leakyrelu
 using LuxCore: AbstractLuxLayer
 using Random: AbstractRNG
+using ComponentArrays: ComponentArray
+using NNlib: pad_circular
 using Tullio
 
 # Observation: the original CNO paper basically assumes PBC everywhere.
@@ -280,6 +282,22 @@ function ((;)::CNO)(x, params, state)
     bottleneck_ranges = state.bottleneck_ranges
     reversed_bottleneck_ranges = state.reversed_bottleneck_ranges
 
+    # First thing to do is to crop the center of x along every dimension
+    s0 = size(x)
+    Nx = s0[1]
+    if Nx != N
+        x_pad = div(Nx - N, 2)
+        start_idx = x_pad + 1
+        end_idx = start_idx + N - 1
+
+        slices = eachslice(x; dims = D + 1)
+        cropped_slices = map(x -> x[start_idx:end_idx, start_idx:end_idx, :], slices)
+        x = stack(cropped_slices; dims = D + 1)
+    else
+        x_pad = 0
+    end
+
+
     # Assert that the dimensions of x are correct
     for i in range(1, D)
         @assert size(x, i) == N "ERROR: x has dimension $i = $(size(x, i)) but it should be $N"
@@ -362,6 +380,11 @@ function ((;)::CNO)(x, params, state)
         y = reversed_activations_layers_down[i](y)
     end
 
+    # Check if I have to add padding
+    if x_pad > 0
+        # TODO extend to more dims
+        y = pad_circular(y, (x_pad, x_pad, x_pad, x_pad))
+    end
     y, state
 end
 
@@ -434,7 +457,9 @@ function combined_mconv_activation_updown(y, k, mask, activation, updown)
     updown(activation(apply_masked_convolution(y, k = k, mask = mask)))
 end
 
-function cno(kwargs...)
+function cno(; kwargs...)
+    rng = haskey(kwargs, :rng) ? kwargs[:rng] : Random.default_rng()
+    use_cuda = haskey(kwargs, :use_cuda) ? kwargs[:use_cuda] : false
     if use_cuda
         dev = Lux.gpu_device()
     else
