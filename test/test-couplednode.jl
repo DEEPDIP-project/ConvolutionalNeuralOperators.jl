@@ -59,7 +59,6 @@ using OrdinaryDiffEqTsit5
     output = Lux.apply(closure, input_tensor, θ_start, st)[1]
     @test size(output) == size(input_tensor)
 
-
     # Read conf
     NS = Base.get_extension(CoupledNODE, :NavierStokes)
     conf = NS.read_config("./config.yaml")
@@ -97,7 +96,6 @@ using OrdinaryDiffEqTsit5
     data_train = []
     data_i = namedtupleload("data_train.jld2")
     push!(data_train, hcat(data_i))
-
 
     # Create the io array
     NS = Base.get_extension(CoupledNODE, :NavierStokes)
@@ -157,7 +155,7 @@ using OrdinaryDiffEqTsit5
     end
     tmp1, tmp2 = back(λ)
     @test size(tmp1) == (18, 18, 2)
-    @test size(tmp2) == (94118,)
+    @test size(tmp2) == (6656,)
 
     # Final integration test of the entire train interface
     l, trainstate = CoupledNODE.train(

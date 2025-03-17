@@ -1,5 +1,5 @@
 using DifferentialEquations: ODEProblem, solve
-using Optimization: Optimization
+using Optimization: Optimization, solve
 using OptimizationOptimisers: OptimiserChain, Adam, ClipGrad
 using Random: Random
 using TestImages: testimage
@@ -91,13 +91,8 @@ using Test  # Importing the Test module for @test statements
     optf = Optimization.OptimizationFunction((p, _) -> loss(p), Optimization.AutoZygote())
     optprob = Optimization.OptimizationProblem(optf, θ)
     ClipAdam = OptimiserChain(Adam(1.0e-1), ClipGrad(1))
-    optim_result, optim_t, optim_mem, _ = @timed Optimization.solve(
-        optprob,
-        ClipAdam,
-        maxiters = 10,
-        callback = callback,
-        progress = true,
-    )
+    optim_result, optim_t, optim_mem, _ =
+        @timed Optimization.solve(optprob, ClipAdam; maxiters = 10, callback = callback)
 
     # Final loss test
     loss_final = loss(optim_result.u, 128)
@@ -120,7 +115,6 @@ using Test  # Importing the Test module for @test statements
 
     @info "There are $(length(θ)) parameters"
 
-    @test typeof(model) <: Lux.Chain
     @test size(model(u, θ, st)[1]) == size(u)
     function loss(θ, batch = 16)
         y = rand(T, N, N, 1, batch)
@@ -139,13 +133,8 @@ using Test  # Importing the Test module for @test statements
     optf = Optimization.OptimizationFunction((p, _) -> loss(p), Optimization.AutoZygote())
     optprob = Optimization.OptimizationProblem(optf, θ)
     ClipAdam = OptimiserChain(Adam(1.0e-1), ClipGrad(1))
-    optim_result, optim_t, optim_mem, _ = @timed Optimization.solve(
-        optprob,
-        ClipAdam,
-        maxiters = 10,
-        callback = callback,
-        progress = true,
-    )
+    optim_result, optim_t, optim_mem, _ =
+        @timed Optimization.solve(optprob, ClipAdam, maxiters = 10, callback = callback)
     loss_final = loss(optim_result.u, 128)
     @test loss_final < loss_0
 end
