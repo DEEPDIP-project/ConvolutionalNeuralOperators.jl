@@ -1,10 +1,13 @@
-using FFTW: fft, ifft
+using AbstractFFTs: fft, ifft
+using KernelAbstractions
+using CUDA
+using ChainRulesCore
 
 # This code defines utils for the Convolutional Neural Operators (CNO) architecture.
 # It includes also the functionals for the downsampler, upsampler, and activation function.
 # They will be fundamental for the CNOLayers defined in CNO.jl
 
-function create_filter(T, grid, cutoff; sigma = 1, filter_type = "sinc")
+function create_filter(T, grid, cutoff; sigma = 1, filter_type = "sinc", force_cpu = false)
     # TODO extend to multiple dimensions
     N = length(grid)
     N2 = Int(N / 2)
@@ -49,14 +52,66 @@ function create_filter(T, grid, cutoff; sigma = 1, filter_type = "sinc")
     _kernel = _kernel / sum(_kernel)
 
     # Do the fft of the kernel once
-    K_f = fft(_kernel)
+    if CUDA.functional() && !force_cpu
+        _kernel = CuArray(_kernel)
+    end
+    K_f = fft(_kernel, (1,2))
 
     function apply_fitler(x)
         # Perform circular convolution using FFT (notice I am assuming PBC in both directions)
-        X_f = fft(x)
+        if x isa SubArray && parent(x) isa CuArray
+            # TODO: This should not be done since collect allocates memory,
+            # however to make fft work on GPU I have to do this
+            x = CuArray(collect(x))
+        end
+        X_f = fft(x, (1,2))
         filtered_f = X_f .* K_f
-        real(ifft(filtered_f))
+        real(ifft(filtered_f,(1,2)))
     end
+end
+
+function downsample_kernel!(mydev, x_filter, result, down_factor::Int, downsampled_size)
+    @kernel inbounds=true function dk!(x_filter, result, down_factor::Int)
+        i, j, ch, batch = @index(Global, NTuple)
+
+        # Calculate the corresponding indices in the original array for the spatial dimensions
+        original_i = (i - 1) * down_factor + 1
+        original_j = (j - 1) * down_factor + 1
+
+        # Assign the downsampled value to the result
+        result[i, j, ch, batch] = x_filter[original_i, original_j, ch, batch]
+    end
+    backend = mydev["bck"]
+    workgroupsize = mydev["workgroupsize"]
+    dk!(backend, workgroupsize)(x_filter, result, down_factor; ndrange=downsampled_size)
+end
+
+function ChainRulesCore.rrule(::typeof(downsample_kernel!), mydev, x_filter, result, down_factor::Int, downsampled_size)
+    
+    backend = mydev["bck"]
+    workgroupsize = mydev["workgroupsize"]
+    downsample_kernel!(mydev, x_filter, result, down_factor, downsampled_size)
+
+    function downsample_kernel!_pb(result_bar)
+
+        @kernel function dk_pb!(x_filter_bar, result_bar, down_factor)
+            i, j, ch, batch = @index(Global, NTuple)
+            original_i = (i - 1) * down_factor + 1
+            original_j = (j - 1) * down_factor + 1
+            x_filter_bar[original_i, original_j, ch, batch] = result_bar[i, j, ch, batch]
+        end
+
+        if x_filter isa CuArray || (x_filter isa SubArray && parent(x_filter) isa CuArray)
+            x_filter_bar = CUDA.zeros(eltype(x_filter), size(x_filter))
+        else
+            x_filter_bar = zeros(eltype(x_filter), size(x_filter))
+        end
+
+        dk_pb!(backend,workgroupsize)(x_filter_bar, result_bar, down_factor; ndrange=downsampled_size)
+        return NoTangent(), NoTangent(), x_filter_bar, NoTangent(), NoTangent(), NoTangent()
+    end
+
+    return result, downsample_kernel!_pb
 end
 
 function create_CNOdownsampler(
@@ -65,35 +120,71 @@ function create_CNOdownsampler(
     N::Int,
     down_factor::Int,
     cutoff,
-    filter_type = "sinc",
+    filter_type = "sinc";
+    force_cpu = false
 )
     grid = collect(0.0:(1.0/(N-1)):1.0)
-    filtered_size = (((1:down_factor:N) for _ = 1:D)..., :, :)
-    filter = create_filter(T, grid, cutoff, filter_type = filter_type)
+    filter = create_filter(T, grid, cutoff, filter_type = filter_type, force_cpu = force_cpu)
     # The prefactor is the factor by which the energy is conserved (check 'Convolutional Neural Operators for robust and accurate learning of PDEs')
     prefactor = T(1 / down_factor^D)
 
+    if CUDA.functional() && !force_cpu
+        backend = CUDABackend()
+        workgroupsize = 256
+    else
+        backend = CPU()
+        workgroupsize = 64
+    end
+    mydev = Dict("bck" => backend, "workgroupsize" => workgroupsize)
+
+
     function CNOdownsampler(x)
-        # Apply the lowpass filter
         x_filter = filter(x) * prefactor
-        # then take only the downsampled values
-        @view x_filter[filtered_size...]
+
+        downsampled_size = (div(N, down_factor), div(N, down_factor), size(x, 3), size(x, 4))
+
+        if x_filter isa CuArray || (x_filter isa SubArray && parent(x_filter) isa CuArray)
+            result = CUDA.zeros(T, downsampled_size)
+        else
+            result = zeros(T, downsampled_size)
+        end
+        downsample_kernel!(mydev, x_filter, result, down_factor, downsampled_size)
+        result
     end
 end
 
+
+
 function expand_with_zeros(x, T, up_size, up_factor)
-    x_up = zeros(T, up_size..., size(x)[end-1], size(x)[end])
-    x_up[1:up_factor:end, 1:up_factor:end, :, :] .= x
+    if x isa CuArray || (x isa SubArray && parent(x) isa CuArray)
+        x_up = CUDA.zeros(T, up_size..., size(x)[end-1], size(x)[end])
+    else
+        x_up = zeros(T, up_size..., size(x)[end-1], size(x)[end])
+    end
+    idx1 = 1:up_factor:size(x_up)[1]
+    idx2 = 1:up_factor:size(x_up)[2]
+    CUDA.@allowscalar(copyto!(view(x_up, idx1, idx2, :, :), x) )
     return x_up
 end
 
-using ChainRules: ChainRulesCore, NoTangent
 function ChainRulesCore.rrule(::typeof(expand_with_zeros), x, T, up_size, up_factor)
+    if x isa SubArray && parent(x) isa CuArray
+        # TODO: This should not be done since collect allocates memory,
+        # however to make pullback work on GPU I have to do this
+        x = CuArray(collect(x))
+    end
     y = expand_with_zeros(x, T, up_size, up_factor)
-    function expand_with_zeros_pb(ȳ)
-        x̄ = zeros(T, size(x))
-        x̄ .= ȳ[1:up_factor:end, 1:up_factor:end, :, :]
-        return NoTangent(), x̄, NoTangent(), NoTangent(), NoTangent()
+    function expand_with_zeros_pb(ybar)
+        if ybar isa CuArray || (ybar isa SubArray && parent(ybar) isa CuArray)
+            xbar = CUDA.zeros(T, size(x))
+            idx1 = 1:up_factor:size(ybar)[1]
+            idx2 = 1:up_factor:size(ybar)[2]
+            CUDA.@allowscalar(copyto!(view(xbar, idx1, idx2, :, :), ybar) )
+        else
+            xbar = zeros(T, size(x))
+            xbar .= ybar[1:up_factor:end, 1:up_factor:end, :, :]
+        end
+        return NoTangent(), xbar, NoTangent(), NoTangent(), NoTangent()
     end
     return y, expand_with_zeros_pb
 end
@@ -104,12 +195,13 @@ function create_CNOupsampler(
     N::Int,
     up_factor::Int,
     cutoff,
-    filter_type = "sinc",
+    filter_type = "sinc";
+    force_cpu = false
 )
     D_up = up_factor * N
     up_size = (D_up for _ = 1:D)
     grid_up = collect(0.0:(1.0/(D_up-1)):1.0)
-    filter = create_filter(T, grid_up, cutoff, filter_type = filter_type)
+    filter = create_filter(T, grid_up, cutoff, filter_type = filter_type, force_cpu = force_cpu)
 
     function CNOupsampler(x)
         # Enhance to the upsampled size
@@ -119,11 +211,6 @@ function create_CNOupsampler(
     end
 end
 
-function remove_BC(x)
-    # TODO this is redundant with NN_padded_to_NN_nopad, but I want to use it like this
-    @view x[2:(end-1), 2:(end-1), :, :]
-end
-
 function create_CNOactivation(
     T::Type,
     D::Int,
@@ -131,11 +218,12 @@ function create_CNOactivation(
     cutoff;
     activation_function = identity,
     filter_type = "sinc",
+    force_cpu = false
 )
     # the activation function is applied like this:
     # upsamplex2 -> apply activation -> downsamplex2
-    us = create_CNOupsampler(T, D, N, 2, cutoff, filter_type)
-    ds = create_CNOdownsampler(T, D, N * 2, 2, cutoff, filter_type)
+    us = create_CNOupsampler(T, D, N, 2, cutoff, filter_type, force_cpu=force_cpu)
+    ds = create_CNOdownsampler(T, D, N * 2, 2, cutoff, filter_type, force_cpu=force_cpu)
     function CNOactivation(x)
         ds(activation_function(us(x)))
     end
