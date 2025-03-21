@@ -35,12 +35,26 @@ using CUDA
     @test N - 1 == div(N0, down_factor)
 
     # Test create_CNOactivation with identity activation
-    al_identity = create_CNOactivation(T, D, N, cutoff, activation_function = identity, force_cpu = true)
+    al_identity = create_CNOactivation(
+        T,
+        D,
+        N,
+        cutoff,
+        activation_function = identity,
+        force_cpu = true,
+    )
     u_identity = al_identity(u)
     @test size(u_identity) == size(u)
 
     # Test create_CNOactivation with tanhshrink activation
-    al_tanhshrink = create_CNOactivation(T, D, N, cutoff, activation_function = tanhshrink, force_cpu = true)
+    al_tanhshrink = create_CNOactivation(
+        T,
+        D,
+        N,
+        cutoff,
+        activation_function = tanhshrink,
+        force_cpu = true,
+    )
     u_tanhshrink = al_tanhshrink(u)
     @test size(u_tanhshrink) == size(u)
 
@@ -111,7 +125,7 @@ end
     rng = Random.Xoshiro(123)
     θ, st = Lux.setup(rng, closure)
     dev = Lux.gpu_device()
-    θ = ComponentArray(θ) 
+    θ = ComponentArray(θ)
 
     # Trigger closure and verify output size
     out = closure(u, θ, st)

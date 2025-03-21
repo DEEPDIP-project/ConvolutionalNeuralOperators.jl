@@ -1,7 +1,8 @@
 using Test
 using TestImages: testimage
 using Random: Random
-using ConvolutionalNeuralOperators: create_CNOdownsampler, create_CNO, create_CNOupsampler, create_filter, downsample_kernel!
+using ConvolutionalNeuralOperators:
+    create_CNOdownsampler, create_CNO, create_CNOupsampler, create_filter, downsample_kernel
 using Lux
 using CUDA
 using LuxCUDA
@@ -66,7 +67,45 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
         @test img1 == img2
     end
 
-    @testset "Direct Downsampler comparison" begin
+    @testset "Upsampler implementation" begin
+        function direct_upsampler(
+            T::Type,
+            D::Int,
+            N::Int,
+            up_factor::Int,
+            cutoff,
+            filter_type = "sinc",
+        )
+            D_up = up_factor * N
+            up_size = (D_up for _ = 1:D)
+            grid_up = collect(0.0:(1.0/(D_up-1)):1.0)
+            filter = create_filter(T, grid_up, cutoff, filter_type = filter_type)
+
+            function expand_with_zeros(x, T, up_size, up_factor)
+                x_up = zeros(T, up_size..., size(x)[end-1], size(x)[end])
+                x_up[1:up_factor:end, 1:up_factor:end, :, :] .= x
+                return x_up
+            end
+
+            function CNOupsampler(x)
+                # Enhance to the upsampled size
+                x_up = expand_with_zeros(x, T, up_size, up_factor)
+                # then apply the lowpass filter
+                filter(x_up)
+            end
+        end
+
+        direct_ds = direct_upsampler(T, D, N, up_factor, cutoff)
+        uu = direct_ds(u)
+        usu = us(u)
+        @info "type of dsu: $(typeof(usu))"
+        @info "type of direct: $(typeof(uu))"
+        @info "size of dsu: $(size(usu))"
+        @info "size of direct: $(size(uu))"
+        @test uu ≈ usu
+    end
+
+    @testset "Downsampler implementation" begin
         function direct_downsampler(
             T::Type,
             D::Int,
@@ -77,7 +116,8 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
         )
             grid = collect(0.0:(1.0/(N-1)):1.0)
             filtered_size = (((1:down_factor:N) for _ = 1:D)..., :, :)
-            filter = create_filter(T, grid, cutoff, filter_type = filter_type, force_cpu = true)
+            filter =
+                create_filter(T, grid, cutoff, filter_type = filter_type, force_cpu = true)
             prefactor = T(1 / down_factor^D)
 
             function CNOdownsampler(x)
@@ -93,151 +133,153 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
         x_filter = rand(Float32, 16, 16, 2, 1)
         result = zeros(Float32, 8, 8, 2, 1)
         down_factor = 2
-        mydev = Dict("bck" => CPU(), "workgroupsize" => 64)
-        downsample_kernel!(mydev, x_filter, down_factor, 16)
+        mydev = Dict("bck" => CPU(), "workgroupsize" => 64, "T" => Float32)
+        downsample_kernel(mydev, x_filter, down_factor, 16)
         @test sum(result) !== 0.0
 
-        y, back = Zygote.pullback(downsample_kernel!, mydev, x_filter, down_factor, 16)
+        y, back = Zygote.pullback(downsample_kernel, mydev, x_filter, 16, down_factor)
         x_filter_bar = zeros(Float32, size(x_filter))
         result_bar = rand(Float32, size(result))
         _, x_filter_bar, _, _ = back(result_bar)
         filtered_size = (((1:down_factor:16) for _ = 1:D)..., :, :)
-        redown = x_filter_bar[filtered_size...] 
+        redown = x_filter_bar[filtered_size...]
         @test redown == result_bar
-        
+
     end
-#    @testset "Downsample AD" begin
-#        u_test = ones(Float32, size(u))
-#        @info "u_test size: $(size(u_test))"
-#        du = ds(u_test)
-#        @info "du size: $(size(du))"
-#        #test_rrule(ds, du)
-#        y, back = Zygote._pullback(ds, u_test)
-#        @info back(du)
-#        @info "size of y: $(size(y))"
-#        _, du_bar = back(du)
-#        @info du_bar
-#    end
+    @testset "Downsample AD" begin
+        u_test = ones(Float32, size(u))
+        du = ds(u_test)
+        y, back = Zygote._pullback(ds, u_test)
+        _, du_bar = back(du)
+        @test size(du_bar) == size(u_test)
+        @test sum(du_bar) !== 0.0
+    end
 
-end
-@testset "CNO Downsampling and Upsampling" begin
+    @testset "Upsample AD" begin
+        u_test = ones(Float32, size(u))
+        du = us(u_test)
+        y, back = Zygote._pullback(us, u_test)
+        _, du_bar = back(du)
+        @test size(du_bar) == size(u_test)
+        @test sum(du_bar) !== 0.0
+    end
 
+    @testset "Down->Up AD" begin
+        layers = (x -> ds(x), x -> us2(x))
+        closure = Lux.Chain(layers...)
+        rng = Random.Xoshiro(123)
+        θ, st = Lux.setup(rng, closure)
+        θ = ComponentArray(θ)
+        function downup(u)
+            closure(u, θ, st)[1]
+        end
+        u_test = ones(Float32, size(u))
+        du = downup(u_test)
+        @test size(du) == size(u_test)
+        y, back = Zygote._pullback(downup, u_test)
+        _, du_bar = back(du)
+        @test size(du_bar) == size(u_test)
+        @test sum(du_bar) !== 0.0
 
-#    # ************************************************************************
-#    # Differentiability Tests (down + up)
-#    layers = (x -> ds(x), x -> us2(x))
-#    closure = Lux.Chain(layers...)
-#    rng = Random.Xoshiro(123)
-#    θ, st = Lux.setup(rng, closure)
-#    θ = ComponentArray(θ)
-#    out = closure(u, θ, st)
-#    @test size(out[1]) == size(u)
-#    grad = Zygote.gradient(θ -> closure(u, θ, st)[1][1], θ)
-#    @test !isnothing(grad)  # Ensure gradient calculation was successful
-#
-#
-    # ************************************************************************
-    # Differentiability Tests (down only)
-#    layers = (x -> ds(x))
-#    closure = Lux.Chain(layers)
-#    rng = Random.Xoshiro(123)
-#    θ, st = Lux.setup(rng, closure)
-#    θ = ComponentArray(θ)
-#    out = closure(u, θ, st)
-#    @test size(out[1]) == (32,32,2,1)
-#    grad = Zygote.gradient(θ -> closure(u, θ, st)[1][1], θ)
-#    @test !isnothing(grad)  # Ensure gradient calculation was successful
-
-
-
-#    # ************************************************************************
-#    # Differentiability Tests (up only)
-#    layers = (x -> us(x))
-#    closure = Lux.Chain(layers)
-#    rng = Random.Xoshiro(123)
-#    θ, st = Lux.setup(rng, closure)
-#    θ = ComponentArray(θ)
-#    out = closure(u, θ, st)
-#    @test size(out[1]) == (172,172,2,1)
-#    grad = Zygote.gradient(θ -> closure(u, θ, st)[1][1], θ)
-#    @test !isnothing(grad)  # Ensure gradient calculation was successful
-#
+    end
 end
 
+## Make into GPU
+#u0 = CuArray(u0)
+#ds0 = create_CNOdownsampler(T, D, N0, down_factor0, cutoff)
+#u = ds0(u0)
+#ds = create_CNOdownsampler(T, D, N, down_factor, cutoff )
+#us = create_CNOupsampler(T, D, N, up_factor, cutoff)
+#ds2 = create_CNOdownsampler(T, D, N * up_factor, down_factor, cutoff)
+#us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff)
+#
 #@testset "CNO Downsampling and Upsampling (GPU)" begin
 #
-#    # Setup initial conditions
-#    N0 = 512
-#    T = Float32
-#    D = 2
-#    u0 = zeros(T, N0, N0, D, 1)
-#    u0[:, :, 1, 1] .= testimage("cameraman")
-#    u0 = CuArray(u0)
-#    cutoff = 0.1
+#    @testset "Initial Image Dimensions" begin
+#        @test size(u0) == (N0, N0, D, 1)
+#        @test size(u) == (N, N, D, 1)
+#        @test N == div(N0, down_factor0)
+#    end
 #
+#    @testset "Downsampling and Upsampling Operations" begin
+#        @test size(ds2(us(u))) == size(u)
+#        @test size(us2(ds(u))) == size(u)
+#    end
 #
-#    # Create initial downsampler
-#    down_factor = 6
-#    ds = create_CNOdownsampler(T, D, N0, down_factor, cutoff)
-#    u = ds(u0)
-#    N = size(u, 1)
+#    @testset "Direct Downsampler comparison" begin
+#        function direct_downsampler(
+#            T::Type,
+#            D::Int,
+#            N::Int,
+#            down_factor::Int,
+#            cutoff,
+#            filter_type = "sinc";
+#        )
+#            grid = collect(0.0:(1.0/(N-1)):1.0)
+#            filtered_size = (((1:down_factor:N) for _ = 1:D)..., :, :)
+#            filter = create_filter(T, grid, cutoff, filter_type = filter_type)
+#            prefactor = T(1 / down_factor^D)
 #
-#    # Test: Check downsampled size
-#    @test size(u) == (N, N, D, 1)
-#    @test N - 1 == div(N0, down_factor)
+#            function CNOdownsampler(x)
+#                x_filter = filter(x) * prefactor
+#                x_filter[filtered_size...]
+#            end
+#        end
+#        direct_ds = direct_downsampler(T, D, N, down_factor, cutoff)
+#        @test direct_ds(u) ≈ ds(u)
+#    end
 #
-#    # Create downsampling and upsampling operations
-#    down_factor = 2
-#    ds = create_CNOdownsampler(T, D, N, down_factor, cutoff)
+#    @testset "Downsample Kernel AD" begin
+#        x_filter = CUDA.rand(Float32, 16, 16, 2, 1)
+#        result = CUDA.zeros(Float32, 8, 8, 2, 1)
+#        down_factor = 2
+#        mydev = Dict("bck" => CUDABackend(), "workgroupsize" => 256, "T" => Float32)
+#        downsample_kernel(mydev, x_filter, down_factor, 16)
+#        @test sum(result) !== 0.0
 #
-#    up_factor = 2
-#    us = create_CNOupsampler(T, D, N, up_factor, cutoff)
+#        y, back = Zygote.pullback(downsample_kernel, mydev, x_filter, 16, down_factor)
+#        x_filter_bar = CUDA.zeros(Float32, size(x_filter))
+#        result_bar = CUDA.rand(Float32, size(result))
+#        _, x_filter_bar, _, _ = back(result_bar)
+#        filtered_size = (((1:down_factor:16) for _ = 1:D)..., :, :)
+#        redown = x_filter_bar[filtered_size...] 
+#        @test redown == result_bar
+#        
+#    end
+#    @testset "Downsample AD" begin
+#        u_test = CUDA.ones(Float32, size(u))
+#        du = ds(u_test)
+#        y, back = Zygote._pullback(ds, u_test)
+#        _, du_bar = back(du)
+#        @test size(du_bar) == size(u_test)
+#        @test sum(du_bar) !== 0.0
+#    end
 #
-#    # Test downsampling then upsampling
-#    ds2 = create_CNOdownsampler(T, D, N * up_factor, down_factor, cutoff)
-#    @test size(ds2(us(u))) == size(u)  # Confirm ds2(us(u)) == u
+#    @testset "Upsample AD" begin
+#        u_test = CUDA.ones(Float32, size(u))
+#        du = us(u_test)
+#        y, back = Zygote._pullback(us, u_test)
+#        _, du_bar = back(du)
+#        @test size(du_bar) == size(u_test)
+#        @test sum(du_bar) !== 0.0
+#    end
 #
-#    # Test upsampling then downsampling
-#    us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff)
-#    @test size(us2(ds(u))) == size(u)  # Confirm us2(ds(u)) == u
-#
-#    ## Differentiability Tests
-#    #layers = (x -> ds(x), x -> us2(x))
-#    #closure = Lux.Chain(layers...)
-#    #rng = Random.Xoshiro(123)
-#    #θ, st = Lux.setup(rng, closure)
-#    #θ = ComponentArray(θ)
-#
-#    ## Trigger closure and test output
-#    #out = closure(u, θ, st)
-#    #@test size(out[1]) == size(u)
-#
-#    ## Gradient calculation test
-#    #grad = Zygote.gradient(θ -> closure(u, θ, st)[1][1], θ)
-#    #@test !isnothing(grad)  # Ensure gradient calculation was successful
-#
-#
-#    # Differentiability Tests (down only)
-#    layers = (x -> ds(x))
-#    closure = Lux.Chain(layers)
-#    rng = Random.Xoshiro(123)
-#    θ, st = Lux.setup(rng, closure)
-#    θ = ComponentArray(θ)
-#    out = closure(u, θ, st)
-#    @test size(out[1]) == (43,43,2,1)
-#    grad = Zygote.gradient(θ -> closure(u, θ, st)[1][1], θ)
-#    @test !isnothing(grad)  # Ensure gradient calculation was successful
-#
-#
-#    ## Differentiability Tests (up only)
-#    #layers = (x -> us(x))
-#    #closure = Lux.Chain(layers)
-#    #rng = Random.Xoshiro(123)
-#    #θ, st = Lux.setup(rng, closure)
-#    #θ = ComponentArray(θ)
-#    #out = closure(u, θ, st)
-#    #@test size(out[1]) == (172,172,2,1)
-#    #grad = Zygote.gradient(θ -> closure(u, θ, st)[1][1], θ)
-#    #@test !isnothing(grad)  # Ensure gradient calculation was successful
-#
+##    @testset "Down->Up AD" begin
+##        layers = (x -> ds(x), x -> us2(x))
+##        closure = Lux.Chain(layers...)
+##        rng = Random.Xoshiro(123)
+##        θ, st = Lux.setup(rng, closure)
+##        θ = ComponentArray(θ)
+##        function downup(u)
+##           closure(u, θ, st)[1] 
+##        end
+##        u_test = CUDA.ones(Float32, size(u))
+##        du = downup(u_test)
+##        @test size(du) == size(u_test)
+##        y, back = Zygote._pullback(downup, u_test)
+##        _, du_bar = back(du)
+##        @test size(du_bar) == size(u_test)
+##        @test sum(du_bar) !== 0.0
+##
+##    end
 #end

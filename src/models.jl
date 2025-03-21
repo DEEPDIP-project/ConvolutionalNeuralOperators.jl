@@ -169,7 +169,7 @@ function Lux.initialstates(
         bottlenecks_radii,
         bottlenecks_ch,
         filter_type,
-        force_cpu
+        force_cpu,
     )::CNO,
 )
     downsamplers = []
@@ -186,10 +186,13 @@ function Lux.initialstates(
                 cutoff,
                 activation_function = activations[i],
                 filter_type = filter_type,
-                force_cpu = force_cpu
+                force_cpu = force_cpu,
             ),
         )
-        push!(downsamplers, create_CNOdownsampler(T, D, Nd, df, cutoff, filter_type, force_cpu))
+        push!(
+            downsamplers,
+            create_CNOdownsampler(T, D, Nd, df, cutoff, filter_type, force_cpu),
+        )
         Nd = Int(Nd / df)
     end
     upsamplers = []
@@ -204,7 +207,7 @@ function Lux.initialstates(
                 cutoff,
                 activation_function = reverse(activations)[i],
                 filter_type = filter_type,
-                force_cpu = force_cpu
+                force_cpu = force_cpu,
             ),
         )
         push!(upsamplers, create_CNOupsampler(T, D, Nd, uf, cutoff, filter_type, force_cpu))
@@ -390,7 +393,9 @@ function ((;)::CNO)(x, params, state)
         # ! do not forget to reverse the bottleneck ranges
         y = apply_masked_convolution(
             y,
-            k = CUDA.@allowscalar(k_bottlenecks[reversed_bottleneck_ranges[i+1][end]..., :, :]),
+            k = CUDA.@allowscalar(
+                k_bottlenecks[reversed_bottleneck_ranges[i+1][end]..., :, :]
+            ),
             #k = @view(k_bottlenecks[reversed_bottleneck_ranges[i+1][end]..., :, :]),
             mask = masks_bottlenecks[i],
         )
@@ -411,7 +416,7 @@ function convolve(x, k)
     # I basically have to convolve ch_out kernels to each ch_in and sum them (?TODO? sure about sum?)
     # ! the index can not have 'long' names like ch_in
     #@tullio ffty[i, j, c, b] := fft(x, (1,2))[i, j, a, b] * fft(k,(2,3))[c, i, j]
-    
+
     if k isa SubArray && parent(k) isa CuArray
         # TODO: This should not be done since collect allocates memory,
         # however to make fft work on GPU I have to do this
@@ -423,13 +428,13 @@ function convolve(x, k)
     fft_x = fft(x, (1, 2))
     fft_k = fft(k, (2, 3))
     ffty = similar(x, ComplexF32, size(x, 1), size(x, 2), size(k, 1), size(x, 4))
-    for c in 1:size(k, 1)
-        for ci in 1:size(x, 3)
+    for c = 1:size(k, 1)
+        for ci = 1:size(x, 3)
             ffty[:, :, c, :] .= ffty[:, :, c, :] .+ fft_x[:, :, ci, :] .* fft_k[c, :, :]
         end
     end
 
-    real(ifft(ffty,(1,2)))
+    real(ifft(ffty, (1, 2)))
 end
 
 function apply_residual_blocks(y, k_bottlenecks, k_residual, mask, activation)
@@ -486,7 +491,7 @@ end
 
 function mask_kernel(k, mask)
     #@tullio k2[c, x, y] := k[c, x, y] * mask[x, y]
-    permutedims(permutedims(k, [2,3,1]) .* mask, [3, 1, 2])
+    permutedims(permutedims(k, [2, 3, 1]) .* mask, [3, 1, 2])
 end
 
 function combined_mconv_activation_updown(y, k, mask, activation, updown)

@@ -15,7 +15,7 @@ using OrdinaryDiffEqTsit5
 
 @testset "GPU integration" begin
 
-    if ! CUDA.functional()
+    if !CUDA.functional()
         @error "CUDA is not functional, skipping test"
         return
     end
@@ -137,8 +137,8 @@ using OrdinaryDiffEqTsit5
     callbackstate = trainstate = nothing
 
     u, t = dataloader_post()
-    f = dudt_nn(u[:,:,:,1], θ, 0.f0)
-    @test size(f) == size(u[:,:,:,1])
+    f = dudt_nn(u[:, :, :, 1], θ, 0.0f0)
+    @test size(f) == size(u[:, :, :, 1])
 
     # For testing reason, explicitely set up the probelm
     # Notice that this is automatically done in CoupledNODE
@@ -174,21 +174,21 @@ using OrdinaryDiffEqTsit5
     @test size(tmp1) == (18, 18, 2)
     @test size(tmp2) == (6656,)
 
-#    # Final integration test of the entire train interface
-#    l, trainstate = CoupledNODE.train(
-#        closure,
-#        θ,
-#        st,
-#        dataloader_post,
-#        loss;
-#        tstate = trainstate,
-#        nepochs = 2,
-#        #alg = OptimiserChain(Adam(T(1.0e-3)), ClipGrad(0.1)),
-#        alg = Adam(T(1.0e-3)),
-#        cpu = true,
-#    )
-#    @test isnan(l) == false
-#    @test trainstate.step == 2
-#    @test any(isnan, trainstate.parameters) == false
+    #    # Final integration test of the entire train interface
+    #    l, trainstate = CoupledNODE.train(
+    #        closure,
+    #        θ,
+    #        st,
+    #        dataloader_post,
+    #        loss;
+    #        tstate = trainstate,
+    #        nepochs = 2,
+    #        #alg = OptimiserChain(Adam(T(1.0e-3)), ClipGrad(0.1)),
+    #        alg = Adam(T(1.0e-3)),
+    #        cpu = true,
+    #    )
+    #    @test isnan(l) == false
+    #    @test trainstate.step == 2
+    #    @test any(isnan, trainstate.parameters) == false
 
 end
