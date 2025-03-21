@@ -70,7 +70,17 @@ function create_filter(T, grid, cutoff; sigma = 1, filter_type = "sinc", force_c
     end
 end
 
-function downsample_kernel!(mydev, x_filter, result, down_factor::Int, downsampled_size)
+function downsample_kernel!(mydev, x_filter, N, down_factor::Int)
+    backend = mydev["bck"]
+    workgroupsize = mydev["workgroupsize"]
+    T = mydev["T"]
+
+    downsampled_size = (div(N, down_factor), div(N, down_factor), size(x_filter, 3), size(x_filter, 4))
+    if x_filter isa CuArray || (x_filter isa SubArray && parent(x_filter) isa CuArray)
+        result = CUDA.zeros(T, downsampled_size)
+    else
+        result = zeros(T, downsampled_size)
+    end
     @kernel inbounds=true function dk!(x_filter, result, down_factor::Int)
         i, j, ch, batch = @index(Global, NTuple)
 
@@ -81,16 +91,16 @@ function downsample_kernel!(mydev, x_filter, result, down_factor::Int, downsampl
         # Assign the downsampled value to the result
         result[i, j, ch, batch] = x_filter[original_i, original_j, ch, batch]
     end
-    backend = mydev["bck"]
-    workgroupsize = mydev["workgroupsize"]
+
     dk!(backend, workgroupsize)(x_filter, result, down_factor; ndrange=downsampled_size)
+    result
 end
 
-function ChainRulesCore.rrule(::typeof(downsample_kernel!), mydev, x_filter, result, down_factor::Int, downsampled_size)
+function ChainRulesCore.rrule(::typeof(downsample_kernel!), mydev, x_filter, N, down_factor::Int)
     
     backend = mydev["bck"]
     workgroupsize = mydev["workgroupsize"]
-    downsample_kernel!(mydev, x_filter, result, down_factor, downsampled_size)
+    downsample_kernel!(mydev, x_filter, N, down_factor)
 
     function downsample_kernel!_pb(result_bar)
 
@@ -108,7 +118,7 @@ function ChainRulesCore.rrule(::typeof(downsample_kernel!), mydev, x_filter, res
         end
 
         dk_pb!(backend,workgroupsize)(x_filter_bar, result_bar, down_factor; ndrange=downsampled_size)
-        return NoTangent(), NoTangent(), x_filter_bar, NoTangent(), NoTangent(), NoTangent()
+        return NoTangent(), NoTangent(), x_filter_bar, NoTangent(), NoTangent()
     end
 
     return result, downsample_kernel!_pb
@@ -135,21 +145,12 @@ function create_CNOdownsampler(
         backend = CPU()
         workgroupsize = 64
     end
-    mydev = Dict("bck" => backend, "workgroupsize" => workgroupsize)
-
+    mydev = Dict("bck" => backend, "workgroupsize" => workgroupsize, "T" => T)
 
     function CNOdownsampler(x)
         x_filter = filter(x) * prefactor
 
-        downsampled_size = (div(N, down_factor), div(N, down_factor), size(x, 3), size(x, 4))
-
-        if x_filter isa CuArray || (x_filter isa SubArray && parent(x_filter) isa CuArray)
-            result = CUDA.zeros(T, downsampled_size)
-        else
-            result = zeros(T, downsampled_size)
-        end
-        downsample_kernel!(mydev, x_filter, result, down_factor, downsampled_size)
-        result
+        downsample_kernel!(mydev, x_filter, N, down_factor)
     end
 end
 

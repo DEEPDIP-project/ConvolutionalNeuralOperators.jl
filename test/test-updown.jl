@@ -89,38 +89,35 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
         @test direct_ds(u) ≈ ds(u)
     end
 
-    @testset "Downsample Kernel Test" begin
+    @testset "Downsample Kernel AD" begin
         x_filter = rand(Float32, 16, 16, 2, 1)
         result = zeros(Float32, 8, 8, 2, 1)
         down_factor = 2
         mydev = Dict("bck" => CPU(), "workgroupsize" => 64)
-        downsample_kernel!(mydev, x_filter, result, down_factor, (8, 8, 2, 1))
+        downsample_kernel!(mydev, x_filter, down_factor, 16)
         @test sum(result) !== 0.0
 
-#        layers = (x -> begin result = zeros(Float32, 8, 8, 2, 1); downsample_kernel!(CPU(), 64, x, result, down_factor, (8, 8, 2, 1)); result end)
-#        closure = Lux.Chain(layers)
-#        rng = Random.Xoshiro(123)
-#        θ, st = Lux.setup(rng, closure)
-#        θ = ComponentArray(θ)
-#        out = closure(x_filter, θ, st)
-#        #grad = Zygote.gradient(θ -> closure(x_filter, θ, st)[1][1], θ)
-#        grad = Zygote.gradient(x_filter -> closure(x_filter, θ, st)[1][1].*2, x_filter)
-#        @test !isnothing(grad)
-#        @info "Gradient computed: $grad"
-
-        y, back = Zygote.pullback(downsample_kernel!, mydev, x_filter, result, down_factor, (8, 8, 2, 1))
-        x_filter_bar = ones(Float32, size(x_filter))
-        result_bar = zeros(Float32, size(result))
-        back(result_bar)
-        @test sum(result_bar) !== 0.0
+        y, back = Zygote.pullback(downsample_kernel!, mydev, x_filter, down_factor, 16)
+        x_filter_bar = zeros(Float32, size(x_filter))
+        result_bar = rand(Float32, size(result))
+        _, x_filter_bar, _, _ = back(result_bar)
+        filtered_size = (((1:down_factor:16) for _ = 1:D)..., :, :)
+        redown = x_filter_bar[filtered_size...] 
+        @test redown == result_bar
         
-        @info length(mydev)
-        @info length(x_filter)
-        @info length(result)
-        @info length(down_factor)
-        @info length((8, 8, 2, 1))
-        test_rrule(downsample_kernel!, mydev⊢ NoTangent(), x_filter, result, down_factor⊢ NoTangent(), (8, 8, 2, 1)⊢ NoTangent())
     end
+#    @testset "Downsample AD" begin
+#        u_test = ones(Float32, size(u))
+#        @info "u_test size: $(size(u_test))"
+#        du = ds(u_test)
+#        @info "du size: $(size(du))"
+#        #test_rrule(ds, du)
+#        y, back = Zygote._pullback(ds, u_test)
+#        @info back(du)
+#        @info "size of y: $(size(y))"
+#        _, du_bar = back(du)
+#        @info du_bar
+#    end
 
 end
 @testset "CNO Downsampling and Upsampling" begin
