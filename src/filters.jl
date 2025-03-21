@@ -55,11 +55,6 @@ function create_filter(T, grid, cutoff; sigma = 1, filter_type = "sinc", force_c
 
     function apply_fitler(x)
         # Perform circular convolution using FFT (notice I am assuming PBC in both directions)
-        if x isa SubArray && parent(x) isa CuArray
-            # TODO: This should not be done since collect allocates memory,
-            # however to make fft work on GPU I have to do this
-            x = CuArray(collect(x))
-        end
         X_f = fft(x, (1, 2))
         filtered_f = X_f .* K_f
         real(ifft(filtered_f, (1, 2)))

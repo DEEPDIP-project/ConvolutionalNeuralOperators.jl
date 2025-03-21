@@ -79,7 +79,13 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
             D_up = up_factor * N
             up_size = (D_up for _ = 1:D)
             grid_up = collect(0.0:(1.0/(D_up-1)):1.0)
-            filter = create_filter(T, grid_up, cutoff, filter_type = filter_type)
+            filter = create_filter(
+                T,
+                grid_up,
+                cutoff,
+                filter_type = filter_type,
+                force_cpu = true,
+            )
 
             function expand_with_zeros(x, T, up_size, up_factor)
                 x_up = zeros(T, up_size..., size(x)[end-1], size(x)[end])
@@ -98,10 +104,6 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
         direct_ds = direct_upsampler(T, D, N, up_factor, cutoff)
         uu = direct_ds(u)
         usu = us(u)
-        @info "type of dsu: $(typeof(usu))"
-        @info "type of direct: $(typeof(uu))"
-        @info "size of dsu: $(size(usu))"
-        @info "size of direct: $(size(uu))"
         @test uu ≈ usu
     end
 
@@ -184,102 +186,102 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
     end
 end
 
-## Make into GPU
-#u0 = CuArray(u0)
-#ds0 = create_CNOdownsampler(T, D, N0, down_factor0, cutoff)
-#u = ds0(u0)
-#ds = create_CNOdownsampler(T, D, N, down_factor, cutoff )
-#us = create_CNOupsampler(T, D, N, up_factor, cutoff)
-#ds2 = create_CNOdownsampler(T, D, N * up_factor, down_factor, cutoff)
-#us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff)
-#
-#@testset "CNO Downsampling and Upsampling (GPU)" begin
-#
-#    @testset "Initial Image Dimensions" begin
-#        @test size(u0) == (N0, N0, D, 1)
-#        @test size(u) == (N, N, D, 1)
-#        @test N == div(N0, down_factor0)
-#    end
-#
-#    @testset "Downsampling and Upsampling Operations" begin
-#        @test size(ds2(us(u))) == size(u)
-#        @test size(us2(ds(u))) == size(u)
-#    end
-#
-#    @testset "Direct Downsampler comparison" begin
-#        function direct_downsampler(
-#            T::Type,
-#            D::Int,
-#            N::Int,
-#            down_factor::Int,
-#            cutoff,
-#            filter_type = "sinc";
-#        )
-#            grid = collect(0.0:(1.0/(N-1)):1.0)
-#            filtered_size = (((1:down_factor:N) for _ = 1:D)..., :, :)
-#            filter = create_filter(T, grid, cutoff, filter_type = filter_type)
-#            prefactor = T(1 / down_factor^D)
-#
-#            function CNOdownsampler(x)
-#                x_filter = filter(x) * prefactor
-#                x_filter[filtered_size...]
-#            end
-#        end
-#        direct_ds = direct_downsampler(T, D, N, down_factor, cutoff)
-#        @test direct_ds(u) ≈ ds(u)
-#    end
-#
-#    @testset "Downsample Kernel AD" begin
-#        x_filter = CUDA.rand(Float32, 16, 16, 2, 1)
-#        result = CUDA.zeros(Float32, 8, 8, 2, 1)
-#        down_factor = 2
-#        mydev = Dict("bck" => CUDABackend(), "workgroupsize" => 256, "T" => Float32)
-#        downsample_kernel(mydev, x_filter, down_factor, 16)
-#        @test sum(result) !== 0.0
-#
-#        y, back = Zygote.pullback(downsample_kernel, mydev, x_filter, 16, down_factor)
-#        x_filter_bar = CUDA.zeros(Float32, size(x_filter))
-#        result_bar = CUDA.rand(Float32, size(result))
-#        _, x_filter_bar, _, _ = back(result_bar)
-#        filtered_size = (((1:down_factor:16) for _ = 1:D)..., :, :)
-#        redown = x_filter_bar[filtered_size...] 
-#        @test redown == result_bar
-#        
-#    end
-#    @testset "Downsample AD" begin
-#        u_test = CUDA.ones(Float32, size(u))
-#        du = ds(u_test)
-#        y, back = Zygote._pullback(ds, u_test)
-#        _, du_bar = back(du)
-#        @test size(du_bar) == size(u_test)
-#        @test sum(du_bar) !== 0.0
-#    end
-#
-#    @testset "Upsample AD" begin
-#        u_test = CUDA.ones(Float32, size(u))
-#        du = us(u_test)
-#        y, back = Zygote._pullback(us, u_test)
-#        _, du_bar = back(du)
-#        @test size(du_bar) == size(u_test)
-#        @test sum(du_bar) !== 0.0
-#    end
-#
-##    @testset "Down->Up AD" begin
-##        layers = (x -> ds(x), x -> us2(x))
-##        closure = Lux.Chain(layers...)
-##        rng = Random.Xoshiro(123)
-##        θ, st = Lux.setup(rng, closure)
-##        θ = ComponentArray(θ)
-##        function downup(u)
-##           closure(u, θ, st)[1] 
-##        end
-##        u_test = CUDA.ones(Float32, size(u))
-##        du = downup(u_test)
-##        @test size(du) == size(u_test)
-##        y, back = Zygote._pullback(downup, u_test)
-##        _, du_bar = back(du)
-##        @test size(du_bar) == size(u_test)
-##        @test sum(du_bar) !== 0.0
-##
-##    end
-#end
+# Make into GPU
+u0 = CuArray(u0)
+ds0 = create_CNOdownsampler(T, D, N0, down_factor0, cutoff)
+u = ds0(u0)
+ds = create_CNOdownsampler(T, D, N, down_factor, cutoff)
+us = create_CNOupsampler(T, D, N, up_factor, cutoff)
+ds2 = create_CNOdownsampler(T, D, N * up_factor, down_factor, cutoff)
+us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff)
+
+@testset "CNO Downsampling and Upsampling (GPU)" begin
+
+    @testset "Initial Image Dimensions" begin
+        @test size(u0) == (N0, N0, D, 1)
+        @test size(u) == (N, N, D, 1)
+        @test N == div(N0, down_factor0)
+    end
+
+    @testset "Downsampling and Upsampling Operations" begin
+        @test size(ds2(us(u))) == size(u)
+        @test size(us2(ds(u))) == size(u)
+    end
+
+    @testset "Direct Downsampler comparison" begin
+        function direct_downsampler(
+            T::Type,
+            D::Int,
+            N::Int,
+            down_factor::Int,
+            cutoff,
+            filter_type = "sinc";
+        )
+            grid = collect(0.0:(1.0/(N-1)):1.0)
+            filtered_size = (((1:down_factor:N) for _ = 1:D)..., :, :)
+            filter = create_filter(T, grid, cutoff, filter_type = filter_type)
+            prefactor = T(1 / down_factor^D)
+
+            function CNOdownsampler(x)
+                x_filter = filter(x) * prefactor
+                x_filter[filtered_size...]
+            end
+        end
+        direct_ds = direct_downsampler(T, D, N, down_factor, cutoff)
+        @test direct_ds(u) ≈ ds(u)
+    end
+
+    @testset "Downsample Kernel AD" begin
+        x_filter = CUDA.rand(Float32, 16, 16, 2, 1)
+        result = CUDA.zeros(Float32, 8, 8, 2, 1)
+        down_factor = 2
+        mydev = Dict("bck" => CUDABackend(), "workgroupsize" => 256, "T" => Float32)
+        downsample_kernel(mydev, x_filter, down_factor, 16)
+        @test sum(result) !== 0.0
+
+        y, back = Zygote.pullback(downsample_kernel, mydev, x_filter, 16, down_factor)
+        x_filter_bar = CUDA.zeros(Float32, size(x_filter))
+        result_bar = CUDA.rand(Float32, size(result))
+        _, x_filter_bar, _, _ = back(result_bar)
+        filtered_size = (((1:down_factor:16) for _ = 1:D)..., :, :)
+        redown = x_filter_bar[filtered_size...]
+        @test redown == result_bar
+
+    end
+    @testset "Downsample AD" begin
+        u_test = CUDA.ones(Float32, size(u))
+        du = ds(u_test)
+        y, back = Zygote._pullback(ds, u_test)
+        _, du_bar = back(du)
+        @test size(du_bar) == size(u_test)
+        @test sum(du_bar) !== 0.0
+    end
+
+    @testset "Upsample AD" begin
+        u_test = CUDA.ones(Float32, size(u))
+        du = us(u_test)
+        y, back = Zygote._pullback(us, u_test)
+        _, du_bar = back(du)
+        @test size(du_bar) == size(u_test)
+        @test sum(du_bar) !== 0.0
+    end
+
+    @testset "Down->Up AD" begin
+        layers = (x -> ds(x), x -> us2(x))
+        closure = Lux.Chain(layers...)
+        rng = Random.Xoshiro(123)
+        θ, st = Lux.setup(rng, closure)
+        θ = ComponentArray(θ)
+        function downup(u)
+            closure(u, θ, st)[1]
+        end
+        u_test = CUDA.ones(Float32, size(u))
+        du = downup(u_test)
+        @test size(du) == size(u_test)
+        y, back = Zygote._pullback(downup, u_test)
+        _, du_bar = back(du)
+        @test size(du_bar) == size(u_test)
+        @test sum(du_bar) !== 0.0
+
+    end
+end
