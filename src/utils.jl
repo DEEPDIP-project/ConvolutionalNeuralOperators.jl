@@ -4,43 +4,6 @@ using CUDA
 using ChainRulesCore
 
 
-
-#function expand_with_zeros(x, T, up_size, up_factor)
-#    #TODO : replace this with a kernel using KernelAbstractions
-#    if x isa CuArray || (x isa SubArray && parent(x) isa CuArray)
-#        x_up = CUDA.zeros(T, up_size..., size(x)[end-1], size(x)[end])
-#    else
-#        x_up = zeros(T, up_size..., size(x)[end-1], size(x)[end])
-#    end
-#    idx1 = 1:up_factor:size(x_up)[1]
-#    idx2 = 1:up_factor:size(x_up)[2]
-#    CUDA.@allowscalar(copyto!(view(x_up, idx1, idx2, :, :), x) )
-#    return x_up
-#end
-#
-#function ChainRulesCore.rrule(::typeof(expand_with_zeros), x, T, up_size, up_factor)
-#    if x isa SubArray && parent(x) isa CuArray
-#        # TODO: This should not be done since collect allocates memory,
-#        # however to make pullback work on GPU I have to do this
-#        x = CuArray(collect(x))
-#    end
-#    y = expand_with_zeros(x, T, up_size, up_factor)
-#    function expand_with_zeros_pb(ybar)
-#        if ybar isa CuArray || (ybar isa SubArray && parent(ybar) isa CuArray)
-#            xbar = CUDA.zeros(T, size(x))
-#            idx1 = 1:up_factor:size(ybar)[1]
-#            idx2 = 1:up_factor:size(ybar)[2]
-#            CUDA.@allowscalar(copyto!(view(xbar, idx1, idx2, :, :), ybar) )
-#        else
-#            xbar = zeros(T, size(x))
-#            xbar .= ybar[1:up_factor:end, 1:up_factor:end, :, :]
-#        end
-#        return NoTangent(), xbar, NoTangent(), NoTangent(), NoTangent()
-#    end
-#    return y, expand_with_zeros_pb
-#end
-
-
 function create_CNOactivation(
     T::Type,
     D::Int,
