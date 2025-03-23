@@ -123,8 +123,8 @@ u_tanhshrink = actlayer_tanhshrink(u)
 
         y, back = Zygote.pullback(actlayer_tanhshrink, u)
         @test y == result
-        y_bar = rand(Float32, size(u))
-        x_bar = zeros(Float32, size(u))
+        y_bar = CUDA.rand(Float32, size(u))
+        x_bar = CUDA.zeros(Float32, size(u))
         x_bar = back(y_bar)
         @test sum(x_bar) !== 0.0
         @test x_bar != y_bar
