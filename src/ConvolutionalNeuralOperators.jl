@@ -4,6 +4,7 @@ using CUDA: CUDA
 ArrayType = CUDA.functional() ? CUDA.CuArray : Array
 
 include("filters.jl")
+include("convolution.jl")
 include("downsample.jl")
 include("upsample.jl")
 include("utils.jl")
