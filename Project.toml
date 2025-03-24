@@ -5,6 +5,7 @@ version = "0.1.0"
 
 [deps]
 AbstractFFTs = "621f4979-c628-5d54-868e-fcf4e3e8185c"
+Atomix = "a9b6321e-bd34-4604-b9c9-b65b8de01458"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
@@ -25,6 +26,7 @@ NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralC
 
 [compat]
 AbstractFFTs = "1.5.0"
+Atomix = "1.1.1"
 CUDA = "5"
 CairoMakie = "0.12"
 ChainRulesCore = "1.25.1"

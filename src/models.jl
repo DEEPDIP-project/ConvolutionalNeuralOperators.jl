@@ -5,6 +5,8 @@ using Random: AbstractRNG
 using ComponentArrays: ComponentArray
 using NNlib: pad_circular
 #using Tullio
+using KernelAbstractions
+using Atomix: @atomic
 using AbstractFFTs: fft, ifft
 using FFTW: fft, ifft
 
@@ -191,7 +193,7 @@ function Lux.initialstates(
         )
         push!(
             downsamplers,
-            create_CNOdownsampler(T, D, Nd, df, cutoff, filter_type, force_cpu),
+            create_CNOdownsampler(T, D, Nd, df, cutoff, filter_type, force_cpu = force_cpu),
         )
         Nd = Int(Nd / df)
     end
@@ -210,7 +212,10 @@ function Lux.initialstates(
                 force_cpu = force_cpu,
             ),
         )
-        push!(upsamplers, create_CNOupsampler(T, D, Nd, uf, cutoff, filter_type, force_cpu))
+        push!(
+            upsamplers,
+            create_CNOupsampler(T, D, Nd, uf, cutoff, filter_type, force_cpu = force_cpu),
+        )
         Nd = Int(Nd * uf)
     end
     # compute the masks to adapt the upsampling/downsampling kernels to the correct size
@@ -410,32 +415,147 @@ function ((;)::CNO)(x, params, state)
     y, state
 end
 
-using NNlib: pad_zeros
-function convolve(x, k)
-    # following [this](https://datascience.stackexchange.com/questions/68045/how-are-the-channels-handled-in-cnn-is-it-independently-processed-or-fused)
-    # I basically have to convolve ch_out kernels to each ch_in and sum them (?TODO? sure about sum?)
-    # ! the index can not have 'long' names like ch_in
-    #@tullio ffty[i, j, c, b] := fft(x, (1,2))[i, j, a, b] * fft(k,(2,3))[c, i, j]
 
-    if k isa SubArray && parent(k) isa CuArray
-        # TODO: This should not be done since collect allocates memory,
-        # however to make fft work on GPU I have to do this
-        k = CuArray(collect(k))
+@kernel inbounds = true function convolve_kernel(ffty_r, ffty_im, fft_x, fft_k, ch_x)
+    i, j, c, b = @index(Global, NTuple)
+    for ci = 1:ch_x
+        y = fft_x[i, j, ci, b] * fft_k[c, i, j]
+        # In order to use atomic operation I have to split the real and imaginary part
+        @atomic ffty_r[i, j, c, b] += real(y)
+        @atomic ffty_im[i, j, c, b] += imag(y)
     end
-    if x isa SubArray && parent(x) isa CuArray
-        x = CuArray(collect(x))
-    end
+end
+
+function convolve(x, k)
     fft_x = fft(x, (1, 2))
     fft_k = fft(k, (2, 3))
-    ffty = similar(x, ComplexF32, size(x, 1), size(x, 2), size(k, 1), size(x, 4))
-    for c = 1:size(k, 1)
-        for ci = 1:size(x, 3)
-            ffty[:, :, c, :] .= ffty[:, :, c, :] .+ fft_x[:, :, ci, :] .* fft_k[c, :, :]
-        end
+
+    if CUDA.functional() && k isa CuArray
+        # TODO: type is hardcoded
+        ffty_r = CUDA.zeros(Float32, size(x, 1), size(x, 2), size(k, 1), size(x, 4))
+        ffty_im = CUDA.zeros(Float32, size(x, 1), size(x, 2), size(k, 1), size(x, 4))
+        backend = CUDABackend()
+        workgroupsize = 256
+    else
+        ffty_r = zeros(Float32, size(x, 1), size(x, 2), size(k, 1), size(x, 4))
+        ffty_im = zeros(Float32, size(x, 1), size(x, 2), size(k, 1), size(x, 4))
+        backend = CPU()
+        workgroupsize = 64
     end
 
-    real(ifft(ffty, (1, 2)))
+    # Launch the kernel
+    convolve_kernel(backend, workgroupsize)(
+        ffty_r,
+        ffty_im,
+        fft_x,
+        fft_k,
+        size(x, 3);
+        ndrange = size(ffty_r),
+    )
+
+    real(ifft(ComplexF32.(ffty_r, ffty_im), (1, 2)))
 end
+
+
+function ChainRulesCore.rrule(::typeof(convolve), x, k)
+    # Given Y = X * K (where * denotes convolution),
+    # the gradients for backpropagation are:
+    #
+    # 1. Gradient w.r.t. X:
+    #    ∂L/∂X = (∂L/∂Y) * flip(K)
+    #    In the Fourier domain: ℱ(∂L/∂X) = ℱ(∂L/∂Y) * conj(ℱ(K))
+    #
+    # 2. Gradient w.r.t. K:
+    #    ∂L/∂K = flip(X * (∂L/∂Y))
+    #    In the Fourier domain: ℱ(∂L/∂K) = conj(ℱ(X)) * ℱ(∂L/∂Y)
+    #
+    # Here, flip(K) represents a 180-degree rotation (flipping in both dimensions),
+    # and conj() denotes the complex conjugate in the Fourier domain.
+
+    y = convolve(x, k)
+    fft_x = fft(x, (1, 2))
+    fft_k = fft(k, (2, 3))
+
+    function convolve_pb(y_bar)
+        ffty_bar = fft(y_bar, (1, 2))
+
+        if CUDA.functional() && k isa CuArray
+            x_bar_re = CUDA.zeros(Float32, size(x))
+            x_bar_im = CUDA.zeros(Float32, size(x))
+            k_bar_re = CUDA.zeros(Float32, size(k))
+            k_bar_im = CUDA.zeros(Float32, size(k))
+            backend = CUDABackend()
+            workgroupsize = 256
+        else
+            x_bar_re = zeros(Float32, size(x))
+            x_bar_im = zeros(Float32, size(x))
+            k_bar_re = zeros(Float32, size(k))
+            k_bar_im = zeros(Float32, size(k))
+            backend = CPU()
+            workgroupsize = 64
+        end
+
+        # Launch the adjoint kernel for x
+        convolve_adjoint_x_kernel(backend, workgroupsize)(
+            x_bar_re,
+            x_bar_im,
+            ffty_bar,
+            fft_k;
+            ndrange = size(x),
+        )
+        # Launch the adjoint kernel for k
+        convolve_adjoint_k_kernel(backend, workgroupsize)(
+            k_bar_re,
+            k_bar_im,
+            fft_x,
+            ffty_bar,
+            size(x, 3);
+            ndrange = size(k),
+        )
+
+        x_bar = ComplexF32.(x_bar_re, x_bar_im)
+        k_bar = ComplexF32.(k_bar_re, k_bar_im)
+
+        x_bar = real(ifft(x_bar, (1, 2)))
+        k_bar = real(ifft(k_bar, (2, 3)))
+
+        return NoTangent(), x_bar, k_bar
+    end
+    return y, convolve_pb
+end
+
+@kernel inbounds = true function convolve_adjoint_x_kernel(
+    x_bar_re,
+    x_bar_im,
+    ffty_bar,
+    fft_k,
+)
+    i, j, ci, b = @index(Global, NTuple)
+    for c = 1:size(fft_k, 1)
+        # Use the complex conjugate to backprop the convolution
+        y = ffty_bar[i, j, c, b] * conj(fft_k[c, i, j])
+        @atomic x_bar_re[i, j, ci, b] += real(y)
+        @atomic x_bar_im[i, j, ci, b] += imag(y)
+    end
+end
+
+@kernel inbounds = true function convolve_adjoint_k_kernel(
+    k_bar_re,
+    k_bar_im,
+    fft_x,
+    ffty_bar,
+    ch_x,
+)
+    c, i, j = @index(Global, NTuple)
+    for b = 1:size(fft_x, 4)
+        for ci = 1:ch_x
+            y = conj(fft_x[i, j, ci, b]) * ffty_bar[i, j, c, b]
+            @atomic k_bar_re[c, i, j] += real(y)
+            @atomic k_bar_im[c, i, j] += imag(y)
+        end
+    end
+end
+
 
 function apply_residual_blocks(y, k_bottlenecks, k_residual, mask, activation)
     ## Loop in steps of 2 because I have to consider pairs of kernels for a residual block
