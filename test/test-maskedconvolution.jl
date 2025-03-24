@@ -7,7 +7,7 @@ using ComponentArrays: ComponentArray
 using Lux: Lux
 using CUDA
 using LuxCUDA
-using ConvolutionalNeuralOperators: convolve, apply_masked_convolution
+using ConvolutionalNeuralOperators: convolve, apply_masked_convolution, trim_kernel
 using Zygote: Zygote
 using Test  # Importing the Test module for @test statements
 using AbstractFFTs: fft, ifft
@@ -34,6 +34,19 @@ rng = Random.Xoshiro(123)
         @test y !== y_ref
         @test maximum(abs.(y - y_ref)) > 1.0
 
+    end
+
+    @testset "Kernel trim" begin
+        x = rand(Float32, 16, 16, 2, 4)
+        k = rand(Float32, 5, 64, 64)
+        y = trim_kernel(k, size(x))
+        @test size(y) == (5, 16, 16)
+
+        y_bar = ones(Float32, size(y))
+        y, back = Zygote.pullback(trim_kernel, k, size(x))
+        x_bar, _ = back(y_bar)
+        @test all(x_bar[1, 1:16, 1:16] .== 1.0)
+        @test all(x_bar[1, 17:end, 17:end] .== 0.0)
     end
 
     @testset "AD" begin

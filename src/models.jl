@@ -453,13 +453,39 @@ function apply_masked_convolution(y, k, mask)
     k2 = mask_kernel(k, mask)
 
     # Adjust the kernel size to match the input dimensions
-    k3 = @view k2[:, 1:size(y)[1], 1:size(y)[2]]
+    k3 = trim_kernel(k2, size(y))
 
     # Apply the convolution
     y = convolve(y, k3)
 
     return y
 end
+
+function trim_kernel(k, sizex)
+    xx, xy, _, _ = sizex
+    # Trim the kernel to match the input dimensions
+    if k isa CuArray
+        return CUDA.@allowscalar(k[:, 1:xx, 1:xy])
+    else
+        return @view k[:, 1:xx, 1:xy]
+    end
+end
+
+function ChainRulesCore.rrule(::typeof(trim_kernel), k, sizex)
+    y = trim_kernel(k, sizex)
+    if k isa CuArray
+        k_bar = CUDA.zeros(Float32, size(k))
+    else
+        k_bar = zeros(Float32, size(k))
+    end
+
+    function trim_kernel_pullback(y_bar)
+        k_bar[:, 1:size(y_bar)[2], 1:size(y_bar)[3]] .= y_bar
+        return NoTangent(), k_bar, NoTangent()
+    end
+    return y, trim_kernel_pullback
+end
+
 
 function mask_kernel(k, mask)
     permutedims(permutedims(k, [2, 3, 1]) .* mask, [3, 1, 2])
