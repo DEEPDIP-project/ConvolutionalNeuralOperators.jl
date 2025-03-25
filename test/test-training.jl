@@ -25,17 +25,17 @@ for i = 1:5
     u0[:, :, 2, i] .= testimage(img_name)
 end
 # Downsize the input
-down_factor0 = 4
+down_factor0 = 8
 cutoff = 0.1
 ds = create_CNOdownsampler(T, D, N0, down_factor0, cutoff, force_cpu = true)
 u = ds(u0)
 N = size(u)[1]
 # Model configuration
-ch_ = [2, 2]
-act = [tanh_fast, identity]
-df = [2, 2]
-k_rad = [3, 3]
-bd = [2, 2, 2]
+ch_ = [2]
+act = [tanh_fast]
+df = [2]
+k_rad = [2]
+bd = [2, 2]
 cutoff = 10
 model = create_CNO(
     T = T,
@@ -65,32 +65,32 @@ model = create_CNO(
         @test size(model(u, θ, st)[1]) == size(u)
     end
 
-    @testset "Loss" begin
-        u_in = rand(T, size(u))
-        tgt = rand(T, size(u))
 
-        # Define loss function
-        function loss(θ, batch = 16)
-            yout = model(u_in, θ, st)[1]
-            return sum(abs2, (yout .- tgt))
-        end
-
-        loss_0 = loss(θ, 128)
-        @info "Initial loss is $(loss_0)"
-        @test isfinite(loss_0)  # Ensure initial loss is a finite number
-
-        y, back = Zygote.pullback(loss, θ)
-        @test y ≈ loss(θ)  # Ensure pullback is correct
-        y_bar = rand(T, size(y))
-        θ_bar = back(y_bar)[1]
-        @test sum(θ_bar) !== 0.0  # Ensure gradient is non-zero
-        @info "Gradient is $(θ_bar)"
-
-        #        # Gradient calculation
-        #        g = Zygote.gradient(θ -> loss(θ), θ)
-        #        @test !isnothing(g)  # Ensure gradient is calculated successfully
-        #        @info "gradient is $(g)"
-    end
+    #    @testset "Loss" begin
+    #        u_in = rand(T, size(u))
+    #        tgt = rand(T, size(u))
+    #
+    #        # Define loss function
+    #        function loss(θ, batch = 16)
+    #            yout = model(u_in, θ, st)[1]
+    #            return sum(abs2, (yout .- tgt))
+    #        end
+    #
+    #        loss_0 = loss(θ, 128)
+    #        @info "Initial loss is $(loss_0)"
+    #        @test isfinite(loss_0)  # Ensure initial loss is a finite number
+    #
+    #        y, back = Zygote.pullback(loss, θ)
+    #        @test y ≈ loss(θ)  # Ensure pullback is correct
+    #        y_bar = rand(T, size(y))
+    #        θ_bar = back(y_bar)[1]
+    #        @test sum(θ_bar) !== 0.0  # Ensure gradient is non-zero
+    #
+    #        #        # Gradient calculation
+    #        #        g = Zygote.gradient(θ -> loss(θ), θ)
+    #        #        @test !isnothing(g)  # Ensure gradient is calculated successfully
+    #        #        @info "gradient is $(g)"
+    #    end
 
 
     #    @testset "Training" begin

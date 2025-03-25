@@ -7,7 +7,8 @@ using ComponentArrays: ComponentArray
 using Lux: Lux
 using CUDA
 using LuxCUDA
-using ConvolutionalNeuralOperators: convolve, apply_masked_convolution, trim_kernel
+using ConvolutionalNeuralOperators:
+    convolve, apply_masked_convolution, trim_kernel, get_kernel
 using Zygote: Zygote
 using Test  # Importing the Test module for @test statements
 using AbstractFFTs: fft, ifft
@@ -35,6 +36,20 @@ rng = Random.Xoshiro(123)
         @test maximum(abs.(y - y_ref)) > 1.0
 
     end
+
+    @testset "Get kernel" begin
+        ks = rand(Float32, 30, 16, 16)
+        k = get_kernel(ks, 5:10)
+        @test size(k) == (6, 16, 16)
+
+        y_bar = ones(Float32, size(k))
+        k, back = Zygote.pullback(get_kernel, ks, 5:10)
+        ks_bar, _ = back(y_bar)
+        @test all(ks_bar[1:4, :, :] .== 0.0)
+        @test all(ks_bar[5:10, :, :] .== 1.0)
+        @test all(ks_bar[11:end, :, :] .== 0.0)
+    end
+
 
     @testset "Kernel trim" begin
         x = rand(Float32, 16, 16, 2, 4)
@@ -97,6 +112,19 @@ end
         @test y !== y_ref
         @test maximum(abs.(y - y_ref)) > 1.0
 
+    end
+
+    @testset "Get kernel" begin
+        ks = CUDA.rand(Float32, 30, 16, 16)
+        k = get_kernel(ks, 5:11)
+        @test size(k) == (7, 16, 16)
+
+        y_bar = CUDA.ones(Float32, size(k))
+        k, back = Zygote.pullback(get_kernel, ks, 5:11)
+        ks_bar, _ = back(y_bar)
+        @test all(ks_bar[1:4, :, :] .== 0.0)
+        @test all(ks_bar[5:11, :, :] .== 1.0)
+        @test all(ks_bar[12:end, :, :] .== 0.0)
     end
 
     @testset "AD" begin

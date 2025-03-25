@@ -147,3 +147,78 @@ end
         end
     end
 end
+
+
+function apply_masked_convolution(y, k, mask)
+    # to get the correct k i have to reshape+mask+trim
+    # TODO: i don't like this...
+    # ! Zygote does not like that you reuse variable names so, this makes it even uglier with the definition of k2 and k3
+    # ! also Zygote wants the mask to be explicitely defined as a vector so i have to pull it out from the tuple via mask=masks[i]
+
+    # Apply the mask to the kernel
+    k2 = mask_kernel(k, mask)
+
+    # Adjust the kernel size to match the input dimensions
+    k3 = trim_kernel(k2, size(y))
+
+    # Apply the convolution
+    y = convolve(y, k3)
+
+    return y
+end
+
+function trim_kernel(k, sizex)
+    xx, xy, _, _ = sizex
+    # Trim the kernel to match the input dimensions
+    if k isa CuArray
+        return CUDA.@allowscalar(k[:, 1:xx, 1:xy])
+    else
+        return @view k[:, 1:xx, 1:xy]
+    end
+end
+
+function ChainRulesCore.rrule(::typeof(trim_kernel), k, sizex)
+    y = trim_kernel(k, sizex)
+    if k isa CuArray
+        k_bar = CUDA.zeros(Float32, size(k))
+    else
+        k_bar = zeros(Float32, size(k))
+    end
+
+    function trim_kernel_pullback(y_bar)
+        k_bar[:, 1:size(y_bar)[2], 1:size(y_bar)[3]] .= y_bar
+        return NoTangent(), k_bar, NoTangent()
+    end
+    return y, trim_kernel_pullback
+end
+
+
+function mask_kernel(k, mask)
+    permutedims(permutedims(k, [2, 3, 1]) .* mask, [3, 1, 2])
+end
+
+function get_kernel(ks, chrange)
+    if ks isa CuArray
+        return CUDA.@allowscalar(ks[chrange, :, :])
+    else
+        return @view(ks[chrange, :, :])
+    end
+end
+
+function ChainRulesCore.rrule(::typeof(get_kernel), ks, chrange)
+    result = get_kernel(ks, chrange)
+
+    function get_kernel_pullback(result_bar)
+        if ks isa CuArray
+            k_bar = CUDA.zeros(Float32, size(ks))
+            k_bar[chrange, :, :] .= CUDA.@allowscalar(result_bar)
+        else
+            k_bar = zeros(Float32, size(ks))
+            k_bar[chrange, :, :] .= result_bar
+        end
+
+        return NoTangent(), k_bar, NoTangent()
+    end
+
+    return result, get_kernel_pullback
+end
