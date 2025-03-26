@@ -1,64 +1,159 @@
 using Test
+using Adapt
 using TestImages: testimage
 using Random: Random
 using ConvolutionalNeuralOperators: create_CNOdownsampler, create_CNO
 using NNlib: tanhshrink
 using Lux
+using LuxCUDA
 using Zygote: Zygote
 using ComponentArrays: ComponentArray
-using Plots: heatmap, plot
+using CairoMakie: Figure, Axis, heatmap, save, heatmap!, GridLayout
+using Images: load
+using CUDA
 
-@testset "CNO Activation" begin
+CUDA.allowscalar(false)
 
-    # Setup initial image and parameters
-    N0 = 512
-    T = Float32
-    D = 2
-    u0 = zeros(T, N0, N0, D, 1)
-    u0[:, :, 1, 1] .= testimage("cameraman")
-    cutoff = 0.1
+# Setup initial image and parameters
+N0 = 512
+T = Float32
+D = 2
+u0 = zeros(T, N0, N0, D, 1)
+u0[:, :, 1, 1] .= testimage("cameraman")
+cutoff = 0.1
+# Downsize the input
+down_factor = 6
+ds = create_CNOdownsampler(T, D, N0, down_factor, cutoff, force_cpu = true)
+u = ds(u0)
+N = size(u, 1)
+# Define some activation layers
+# (1) Identity activation
+actlayer_identity =
+    create_CNOactivation(T, D, N, cutoff, activation_function = identity, force_cpu = true)
+u_identity = actlayer_identity(u)
+# (2) Tanhshrink activation
+actlayer_tanhshrink = create_CNOactivation(
+    T,
+    D,
+    N,
+    cutoff,
+    activation_function = tanhshrink,
+    force_cpu = true,
+)
+u_tanhshrink = actlayer_tanhshrink(u)
 
-    # Test initial image dimensions
-    @test size(u0) == (N0, N0, D, 1)
+@testset "CNO Activation (CPU)" begin
 
-    # Downsize the input
-    down_factor = 6
-    ds = create_CNOdownsampler(T, D, N0, down_factor, cutoff)
-    u = ds(u0)
-    N = size(u, 1)
+    @testset "Initial Image Dimensions" begin
+        @test size(u0) == (N0, N0, D, 1)
+        @test size(u) == (N, N, D, 1)
+        @test N == div(N0, down_factor)
+    end
 
-    # Test downsampled size
-    @test size(u) == (N, N, D, 1)
-    @test N - 1 == div(N0, down_factor)
 
-    # Test create_CNOactivation with identity activation
-    al_identity = create_CNOactivation(T, D, N, cutoff, activation_function = identity)
-    u_identity = al_identity(u)
-    @test size(u_identity) == size(u)
+    @testset "Identity activation" begin
+        @test size(u_identity) == size(u)
+    end
 
     # Test create_CNOactivation with tanhshrink activation
-    al_tanhshrink = create_CNOactivation(T, D, N, cutoff, activation_function = tanhshrink)
-    u_tanhshrink = al_tanhshrink(u)
-    @test size(u_tanhshrink) == size(u)
+    @testset "Tanhshrink activation" begin
+        @test size(u_tanhshrink) == size(u)
+    end
+
 
     # Visualization tests
-    #p1 = heatmap(u_identity[:, :, 1, 1], aspect_ratio = 1, title = "Identity Activation on u", colorbar = false)
-    #p2 = heatmap(u_tanhshrink[:, :, 1, 1], aspect_ratio = 1, title = "Tanhshrink Activation on u", colorbar = false)
-    #plot(p1, p2, layout = (1, 2))
+    @testset "Visualization Tests" begin
+        fig = Figure(resolution = (800, 400))
+        ax1 = Axis(fig[1, 1], title = "Identity Activation on u")
+        heatmap!(ax1, u_identity[:, :, 1, 1])
+        ax2 = Axis(fig[1, 2], title = "Tanhshrink Activation on u")
+        heatmap!(ax2, u_tanhshrink[:, :, 1, 1])
 
-    # Differentiability Test
-    layers = (x -> al_tanhshrink(x),)
-    closure = Lux.Chain(layers...)
-    rng = Random.Xoshiro(123)
-    θ, st = Lux.setup(rng, closure)
-    θ = ComponentArray(θ)
+        save("test_figs/activation.png", fig)
+        img1 = load("test_figs/activation.png")
+        img2 = load("test_figs/activation_baseline.png")
+        @test img1 == img2
+    end
 
-    # Trigger closure and verify output size
-    out = closure(u, θ, st)
-    @test size(out[1]) == size(u)
+    @testset "Activation AD" begin
+        result = actlayer_tanhshrink(u)
+        @test sum(result) !== 0.0
 
-    # Gradient calculation test
-    grad = Zygote.gradient(θ -> closure(u, θ, st)[1][1], θ)
-    @test !isnothing(grad)  # Ensure gradient calculation was successful
+        y, back = Zygote.pullback(actlayer_tanhshrink, u)
+        @test y == result
+        y_bar = rand(Float32, size(u))
+        x_bar = zeros(Float32, size(u))
+        x_bar = back(y_bar)
+        @test sum(x_bar) !== 0.0
+        @test x_bar != y_bar
+    end
+
+end
+
+if !CUDA.functional()
+    @test "CUDA not functional, skipping GPU tests"
+    return
+end
+# Prepare for GPU tests
+u = CuArray(u)
+actlayer_identity = create_CNOactivation(T, D, N, cutoff, activation_function = identity)
+u_identity = actlayer_identity(u)
+actlayer_tanhshrink =
+    create_CNOactivation(T, D, N, cutoff, activation_function = tanhshrink)
+u_tanhshrink = actlayer_tanhshrink(u)
+
+@testset "CNO Activation (GPU)" begin
+
+
+    @testset "Initial Image Dimensions" begin
+        @test size(u0) == (N0, N0, D, 1)
+        @test size(u) == (N, N, D, 1)
+        @test N == div(N0, down_factor)
+    end
+
+
+    @testset "Identity activation" begin
+        @test isa(u_identity, CuArray)
+        @test size(u_identity) == size(u)
+    end
+
+    # Test create_CNOactivation with tanhshrink activation
+    @testset "Tanhshrink activation" begin
+        @test isa(u_tanhshrink, CuArray)
+        @test size(u_tanhshrink) == size(u)
+    end
+
+
+    @testset "Activation AD identity" begin
+        result = actlayer_identity(u)
+        @test sum(result) !== 0.0
+
+        y, back = Zygote._pullback(actlayer_identity, u)
+        @test y == result
+        y_bar = CUDA.rand(Float32, size(u))
+        x_bar = CUDA.zeros(Float32, size(u))
+        _, x_bar = back(y_bar)
+        @test sum(x_bar) !== 0.0
+        @test x_bar != y_bar
+        @test isa(x_bar, CuArray)
+        @test isa(y, CuArray)
+    end
+
+    @testset "Activation AD tanhshrink" begin
+        result = actlayer_tanhshrink(u)
+        @test sum(result) !== 0.0
+
+        y, back = Zygote._pullback(actlayer_tanhshrink, u)
+        @test y == result
+        y_bar = CUDA.rand(Float32, size(u))
+        x_bar = CUDA.zeros(Float32, size(u))
+        @test isa(x_bar, CuArray)
+        @test isa(y_bar, CuArray)
+        _, x_bar = back(y_bar)
+        @test sum(x_bar) !== 0.0
+        @test x_bar != y_bar
+        @test isa(x_bar, CuArray)
+        @test isa(y, CuArray)
+    end
 
 end

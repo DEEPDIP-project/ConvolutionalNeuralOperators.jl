@@ -1,9 +1,9 @@
 using Lux: Lux, relu, leakyrelu
+using LuxCUDA
 using LuxCore: AbstractLuxLayer
 using Random: AbstractRNG
 using ComponentArrays: ComponentArray
 using NNlib: pad_circular
-using Tullio
 
 # Observation: the original CNO paper basically assumes PBC everywhere.
 
@@ -28,6 +28,7 @@ struct CNO{F} <: AbstractLuxLayer
     bottlenecks_ch::Array
     filter_type::String
     init_weight::F
+    force_cpu::Bool
 end
 
 function create_CNO(;
@@ -43,6 +44,7 @@ function create_CNO(;
     bottleneck_depths = nothing,
     bottlenecks_radii = nothing,
     filter_type = "sinc",
+    force_cpu = false,
     T = Float32,
     init_weight = Lux.kaiming_uniform,
 )
@@ -73,6 +75,10 @@ function create_CNO(;
         @assert length(bottlenecks_radii) == length(ch_sizes) + 1 "The number of bottleneck radii must be equal to the number of up/dw layers + 1"
     end
 
+    if force_cpu
+        @warn "Forcing CNO to use cpu"
+    end
+
     up_factors = reverse(down_factors)
     bottlenecks_ch = [D; ch_sizes]
     down_ch = ch_sizes
@@ -96,6 +102,7 @@ function create_CNO(;
         bottlenecks_ch,
         filter_type,
         init_weight,
+        force_cpu,
     )
 end
 
@@ -115,6 +122,7 @@ function Lux.initialparameters(
         bottlenecks_ch,
         filter_type,
         init_weight,
+        force_cpu,
     )::CNO,
 )
 
@@ -158,6 +166,7 @@ function Lux.initialstates(
         bottlenecks_radii,
         bottlenecks_ch,
         filter_type,
+        force_cpu,
     )::CNO,
 )
     downsamplers = []
@@ -174,9 +183,13 @@ function Lux.initialstates(
                 cutoff,
                 activation_function = activations[i],
                 filter_type = filter_type,
+                force_cpu = force_cpu,
             ),
         )
-        push!(downsamplers, create_CNOdownsampler(T, D, Nd, df, cutoff, filter_type))
+        push!(
+            downsamplers,
+            create_CNOdownsampler(T, D, Nd, df, cutoff, filter_type, force_cpu = force_cpu),
+        )
         Nd = Int(Nd / df)
     end
     upsamplers = []
@@ -191,9 +204,13 @@ function Lux.initialstates(
                 cutoff,
                 activation_function = reverse(activations)[i],
                 filter_type = filter_type,
+                force_cpu = force_cpu,
             ),
         )
-        push!(upsamplers, create_CNOupsampler(T, D, Nd, uf, cutoff, filter_type))
+        push!(
+            upsamplers,
+            create_CNOupsampler(T, D, Nd, uf, cutoff, filter_type, force_cpu = force_cpu),
+        )
         Nd = Int(Nd * uf)
     end
     # compute the masks to adapt the upsampling/downsampling kernels to the correct size
@@ -277,10 +294,10 @@ function ((;)::CNO)(x, params, state)
     masks_down = state.masks_down
     masks_up = state.masks_up
     masks_bottlenecks = state.masks_bottlenecks
-    up_ch_ranges = state.up_ch_ranges
-    down_ch_ranges = state.down_ch_ranges
-    bottleneck_ranges = state.bottleneck_ranges
-    reversed_bottleneck_ranges = state.reversed_bottleneck_ranges
+    up_ch_ranges = Array(state.up_ch_ranges)
+    down_ch_ranges = Array(state.down_ch_ranges)
+    bottleneck_ranges = Array(state.bottleneck_ranges)
+    reversed_bottleneck_ranges = Array(state.reversed_bottleneck_ranges)
 
     # First thing to do is to crop the center of x along every dimension
     s0 = size(x)
@@ -313,7 +330,7 @@ function ((;)::CNO)(x, params, state)
         # (masked) convolution + activation + downsampling
         y = combined_mconv_activation_updown(
             y,
-            @view(k_down[down_ch_ranges[i], :, :]),
+            get_kernel(k_down, down_ch_ranges[i]),
             masks_down[i],
             da,
             ds,
@@ -336,8 +353,8 @@ function ((;)::CNO)(x, params, state)
     # -> last (non-residual) block of the bottleneck
     y = apply_masked_convolution(
         y,
-        k = @view(k_bottlenecks[bottleneck_ranges[end][end]..., :, :]),
-        mask = masks_bottlenecks[end],
+        get_kernel(k_bottlenecks, bottleneck_ranges[end][end]...),
+        masks_bottlenecks[end],
     )
     y = activations_layers_up[1](y)
 
@@ -363,7 +380,7 @@ function ((;)::CNO)(x, params, state)
         # (masked) convolution + activation + upsampling
         y = combined_mconv_activation_updown(
             y,
-            @view(k_up[up_ch_ranges[i], :, :]),
+            get_kernel(k_up, up_ch_ranges[i]),
             masks_up[i],
             ua,
             us,
@@ -374,8 +391,8 @@ function ((;)::CNO)(x, params, state)
         # ! do not forget to reverse the bottleneck ranges
         y = apply_masked_convolution(
             y,
-            k = @view(k_bottlenecks[reversed_bottleneck_ranges[i+1][end]..., :, :]),
-            mask = masks_bottlenecks[i],
+            get_kernel(k_bottlenecks, reversed_bottleneck_ranges[i+1][end]...),
+            masks_bottlenecks[i],
         )
         y = reversed_activations_layers_down[i](y)
     end
@@ -388,14 +405,7 @@ function ((;)::CNO)(x, params, state)
     y, state
 end
 
-using NNlib: pad_zeros
-function convolve(x, k)
-    # following [this](https://datascience.stackexchange.com/questions/68045/how-are-the-channels-handled-in-cnn-is-it-independently-processed-or-fused)
-    # I basically have to convolve ch_out kernels to each ch_in and sum them (?TODO? sure about sum?)
-    # ! the index can not have 'long' names like ch_in
-    @tullio ffty[i, j, c, b] := fft(x)[i, j, a, b] * fft(k)[c, i, j]
-    real(ifft(ffty))
-end
+
 
 function apply_residual_blocks(y, k_bottlenecks, k_residual, mask, activation)
     ## Loop in steps of 2 because I have to consider pairs of kernels for a residual block
@@ -404,25 +414,25 @@ function apply_residual_blocks(y, k_bottlenecks, k_residual, mask, activation)
         y0 = copy(y)
 
         # Get the kernels
-        ka = @view k_bottlenecks[k_residual[ik]..., :, :]
-        kb = @view k_bottlenecks[k_residual[ik+1]..., :, :]
+        ka = get_kernel(k_bottlenecks, k_residual[ik]...)
+        kb = get_kernel(k_bottlenecks, k_residual[ik+1]...)
 
         # Apply masks to the kernels
-        k2a = mask_kernel(ka, mask)
-        k2b = mask_kernel(kb, mask)
+        ka = mask_kernel(ka, mask)
+        kb = mask_kernel(kb, mask)
 
         # Adjust the kernel sizes to match the input dimensions
-        k3a = @view k2a[:, 1:size(y0)[1], 1:size(y0)[2]]
-        k3b = @view k2b[:, 1:size(y0)[1], 1:size(y0)[2]]
+        ka = trim_kernel(ka, size(y0))
+        kb = trim_kernel(kb, size(y0))
 
         # Apply the first convolution
-        y = convolve(y, k3a)
+        y = convolve(y, ka)
 
         # Activate
         y = activation(y)
 
         # Apply the second convolution
-        y = convolve(y, k3b)
+        y = convolve(y, kb)
 
         # Residual sum
         y = y .+ y0
@@ -431,44 +441,30 @@ function apply_residual_blocks(y, k_bottlenecks, k_residual, mask, activation)
     return y
 end
 
-function apply_masked_convolution(y; k, mask)
-    # to get the correct k i have to reshape+mask+trim
-    # TODO: i don't like this...
-    # ! Zygote does not like that you reuse variable names so, this makes it even uglier with the definition of k2 and k3
-    # ! also Zygote wants the mask to be explicitely defined as a vector so i have to pull it out from the tuple via mask=masks[i]
-
-    # Apply the mask to the kernel
-    k2 = mask_kernel(k, mask)
-
-    # Adjust the kernel size to match the input dimensions
-    k3 = @view k2[:, 1:size(y)[1], 1:size(y)[2]]
-
-    # Apply the convolution
-    y = convolve(y, k3)
-
-    return y
-end
-
-function mask_kernel(k, mask)
-    @tullio k2[c, x, y] := k[c, x, y] * mask[x, y]
-end
-
 function combined_mconv_activation_updown(y, k, mask, activation, updown)
-    updown(activation(apply_masked_convolution(y, k = k, mask = mask)))
+    updown(activation(apply_masked_convolution(y, k, mask)))
 end
 
 function cno(; kwargs...)
     rng = haskey(kwargs, :rng) ? kwargs[:rng] : Random.default_rng()
-    use_cuda = haskey(kwargs, :use_cuda) ? kwargs[:use_cuda] : false
+    if !haskey(kwargs, :use_cuda)
+        @error "use_cuda is a mandatory argument of cno"
+    else
+        use_cuda = kwargs[:use_cuda]
+    end
+    filtered_kwargs = Dict(k => v for (k, v) in kwargs if k != :use_cuda && k != :rng)
     if use_cuda
         dev = Lux.gpu_device()
     else
         dev = Lux.cpu_device()
+        filtered_kwargs[:force_cpu] = true
     end
-    filtered_kwargs = Dict(k => v for (k, v) in kwargs if k != :use_cuda && k != :rng)
     model = create_CNO(; filtered_kwargs...)
     params, state = Lux.setup(rng, model)
-    state = state |> dev
-    params = ComponentArray(params) |> dev
+    params = ComponentArray(params)
+    if use_cuda
+        state = state |> dev
+        params = params |> dev
+    end
     (model, params, state)
 end
