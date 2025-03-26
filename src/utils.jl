@@ -1,8 +1,3 @@
-using AbstractFFTs: fft, ifft
-using KernelAbstractions
-using CUDA
-using ChainRulesCore
-
 
 function create_CNOactivation(
     T::Type,

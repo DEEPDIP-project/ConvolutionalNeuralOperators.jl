@@ -294,10 +294,10 @@ function ((;)::CNO)(x, params, state)
     masks_down = state.masks_down
     masks_up = state.masks_up
     masks_bottlenecks = state.masks_bottlenecks
-    up_ch_ranges = state.up_ch_ranges
-    down_ch_ranges = state.down_ch_ranges
-    bottleneck_ranges = state.bottleneck_ranges
-    reversed_bottleneck_ranges = state.reversed_bottleneck_ranges
+    up_ch_ranges = Array(state.up_ch_ranges)
+    down_ch_ranges = Array(state.down_ch_ranges)
+    bottleneck_ranges = Array(state.bottleneck_ranges)
+    reversed_bottleneck_ranges = Array(state.reversed_bottleneck_ranges)
 
     # First thing to do is to crop the center of x along every dimension
     s0 = size(x)
@@ -330,8 +330,6 @@ function ((;)::CNO)(x, params, state)
         # (masked) convolution + activation + downsampling
         y = combined_mconv_activation_updown(
             y,
-            #CUDA.@allowscalar(k_down[down_ch_ranges[i], :, :]),
-            #            @view(k_down[down_ch_ranges[i], :, :]),
             get_kernel(k_down, down_ch_ranges[i]),
             masks_down[i],
             da,
@@ -355,7 +353,7 @@ function ((;)::CNO)(x, params, state)
     # -> last (non-residual) block of the bottleneck
     y = apply_masked_convolution(
         y,
-        @view(k_bottlenecks[bottleneck_ranges[end][end]..., :, :]),
+        get_kernel(k_bottlenecks, bottleneck_ranges[end][end]...),
         masks_bottlenecks[end],
     )
     y = activations_layers_up[1](y)
@@ -382,8 +380,6 @@ function ((;)::CNO)(x, params, state)
         # (masked) convolution + activation + upsampling
         y = combined_mconv_activation_updown(
             y,
-            #CUDA.@allowscalar(k_up[up_ch_ranges[i], :, :]),
-            #@view(k_up[up_ch_ranges[i], :, :]),
             get_kernel(k_up, up_ch_ranges[i]),
             masks_up[i],
             ua,
@@ -395,8 +391,6 @@ function ((;)::CNO)(x, params, state)
         # ! do not forget to reverse the bottleneck ranges
         y = apply_masked_convolution(
             y,
-            #CUDA.@allowscalar(k_bottlenecks[reversed_bottleneck_ranges[i+1][end]..., :, :]),
-            #            @view(k_bottlenecks[reversed_bottleneck_ranges[i+1][end]..., :, :]),
             get_kernel(k_bottlenecks, reversed_bottleneck_ranges[i+1][end]...),
             masks_bottlenecks[i],
         )
@@ -420,25 +414,25 @@ function apply_residual_blocks(y, k_bottlenecks, k_residual, mask, activation)
         y0 = copy(y)
 
         # Get the kernels
-        ka = @view k_bottlenecks[k_residual[ik]..., :, :]
-        kb = @view k_bottlenecks[k_residual[ik+1]..., :, :]
+        ka = get_kernel(k_bottlenecks, k_residual[ik]...)
+        kb = get_kernel(k_bottlenecks, k_residual[ik+1]...)
 
         # Apply masks to the kernels
-        k2a = mask_kernel(ka, mask)
-        k2b = mask_kernel(kb, mask)
+        ka = mask_kernel(ka, mask)
+        kb = mask_kernel(kb, mask)
 
         # Adjust the kernel sizes to match the input dimensions
-        k3a = @view k2a[:, 1:size(y0)[1], 1:size(y0)[2]]
-        k3b = @view k2b[:, 1:size(y0)[1], 1:size(y0)[2]]
+        ka = trim_kernel(ka, size(y0))
+        kb = trim_kernel(kb, size(y0))
 
         # Apply the first convolution
-        y = convolve(y, k3a)
+        y = convolve(y, ka)
 
         # Activate
         y = activation(y)
 
         # Apply the second convolution
-        y = convolve(y, k3b)
+        y = convolve(y, kb)
 
         # Residual sum
         y = y .+ y0
@@ -453,16 +447,24 @@ end
 
 function cno(; kwargs...)
     rng = haskey(kwargs, :rng) ? kwargs[:rng] : Random.default_rng()
-    use_cuda = haskey(kwargs, :use_cuda) ? kwargs[:use_cuda] : false
+    if !haskey(kwargs, :use_cuda)
+        @error "use_cuda is a mandatory argument of cno"
+    else
+        use_cuda = kwargs[:use_cuda]
+    end
+    filtered_kwargs = Dict(k => v for (k, v) in kwargs if k != :use_cuda && k != :rng)
     if use_cuda
         dev = Lux.gpu_device()
     else
         dev = Lux.cpu_device()
+        filtered_kwargs[:force_cpu] = true
     end
-    filtered_kwargs = Dict(k => v for (k, v) in kwargs if k != :use_cuda && k != :rng)
     model = create_CNO(; filtered_kwargs...)
     params, state = Lux.setup(rng, model)
-    state = state |> dev
-    params = ComponentArray(params) |> dev
+    params = ComponentArray(params)
+    if use_cuda
+        state = state |> dev
+        params = params |> dev
+    end
     (model, params, state)
 end

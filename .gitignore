@@ -12,3 +12,5 @@ coverage
 docs/build/
 env
 node_modules
+test/test_figs/activation.png
+test/test_figs/downsampling_upsampling.png

@@ -16,6 +16,7 @@ using FFTW: fft, ifft
 using ChainRulesCore
 
 rng = Random.Xoshiro(123)
+CUDA.allowscalar(false)
 
 
 @testset "Masked-Convolution (CPU)" begin
@@ -94,6 +95,10 @@ rng = Random.Xoshiro(123)
 
 end
 
+if !CUDA.functional()
+    @test "CUDA not functional, skipping GPU tests"
+    return
+end
 
 @testset "Masked-Convolution (GPU)" begin
     @testset "Forward" begin
@@ -142,6 +147,9 @@ end
         @test sum(k_bar) !== 0.0
         @test x_bar ≈ x_bar_ref
         @test k_bar ≈ k_bar_ref
+        @test isa(x_bar, CUDA.CuArray)
+        @test isa(k_bar, CUDA.CuArray)
+        @test isa(y, CUDA.CuArray)
 
         mask = CUDA.rand(Float32, 16, 16)
         y, back = Zygote.pullback(apply_masked_convolution, x, k, mask)

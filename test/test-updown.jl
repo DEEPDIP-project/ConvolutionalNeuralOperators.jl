@@ -15,6 +15,8 @@ using ChainRulesTestUtils
 using ChainRulesCore
 
 
+CUDA.allowscalar(false)
+
 # Setup initial conditions
 N0 = 512
 T = Float32
@@ -186,6 +188,11 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
     end
 end
 
+if !CUDA.functional()
+    @test "CUDA not functional, skipping GPU tests"
+    return
+end
+
 # Make into GPU
 u0 = CuArray(u0)
 ds0 = create_CNOdownsampler(T, D, N0, down_factor0, cutoff)
@@ -282,6 +289,8 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff)
         _, du_bar = back(du)
         @test size(du_bar) == size(u_test)
         @test sum(du_bar) !== 0.0
+        @test isa(du_bar, CuArray)
+        @test isa(y, CuArray)
 
     end
 end

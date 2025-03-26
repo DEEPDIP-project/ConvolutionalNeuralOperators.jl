@@ -15,6 +15,8 @@ using FFTW: fft, ifft
 using ChainRulesCore
 
 rng = Random.Xoshiro(123)
+CUDA.allowscalar(false)
+
 function reference_convolve(x, k)
     if k isa SubArray && parent(k) isa CuArray
         k = CuArray(collect(k))
@@ -106,6 +108,10 @@ end
 
 end
 
+if !CUDA.functional()
+    @test "CUDA not functional, skipping GPU tests"
+    return
+end
 @testset "Convolution (GPU)" begin
     @testset "Forward" begin
         x = CUDA.ones(Float32, 16, 16, 2, 1)
@@ -114,6 +120,7 @@ end
         y = convolve(x, k)
         @test size(y) == size(y_ref)
         @test y ≈ y_ref
+        @test isa(y, CuArray)
 
         x = CUDA.ones(Float32, 16, 16, 2, 1)
         k = CUDA.ones(Float32, 5, 16, 16)
@@ -150,6 +157,8 @@ end
         @test sum(k_bar) !== 0.0
         @test x_bar ≈ x_bar_ref
         @test k_bar ≈ k_bar_ref
+        @test isa(x_bar, CuArray)
+        @test isa(y, CuArray)
 
 
         y_bar = CUDA.rand(Float32, size(y))

@@ -66,90 +66,144 @@ model = create_CNO(
     end
 
 
-    #    @testset "Loss" begin
-    #        u_in = rand(T, size(u))
-    #        tgt = rand(T, size(u))
-    #
-    #        # Define loss function
-    #        function loss(θ, batch = 16)
-    #            yout = model(u_in, θ, st)[1]
-    #            return sum(abs2, (yout .- tgt))
-    #        end
-    #
-    #        loss_0 = loss(θ, 128)
-    #        @info "Initial loss is $(loss_0)"
-    #        @test isfinite(loss_0)  # Ensure initial loss is a finite number
-    #
-    #        y, back = Zygote.pullback(loss, θ)
-    #        @test y ≈ loss(θ)  # Ensure pullback is correct
-    #        y_bar = rand(T, size(y))
-    #        θ_bar = back(y_bar)[1]
-    #        @test sum(θ_bar) !== 0.0  # Ensure gradient is non-zero
-    #
-    #        #        # Gradient calculation
-    #        #        g = Zygote.gradient(θ -> loss(θ), θ)
-    #        #        @test !isnothing(g)  # Ensure gradient is calculated successfully
-    #        #        @info "gradient is $(g)"
-    #    end
+    @testset "Loss" begin
+        u_in = rand(T, size(u))
+        tgt = rand(T, size(u))
+
+        # Define loss function
+        function loss(θ, batch = 16)
+            yout = model(u_in, θ, st)[1]
+            return sum(abs2, (yout .- tgt))
+        end
+
+        loss_0 = loss(θ, 128)
+        @test isfinite(loss_0)  # Ensure initial loss is a finite number
+
+        y, back = Zygote.pullback(loss, θ)
+        @test y ≈ loss(θ)  # Ensure pullback is correct
+        y_bar = rand(T, size(y))
+        θ_bar = back(y_bar)[1]
+        @test sum(θ_bar) !== 0.0  # Ensure gradient is non-zero
+
+        # Gradient calculation
+        g = Zygote.gradient(θ -> loss(θ), θ)
+        @test !isnothing(g)  # Ensure gradient is calculated successfully
+        @test sum(g) !== 0.0  # Ensure gradient is non-zero
+    end
 
 
-    #    @testset "Training" begin
-    #        loss_0 = loss(θ, 128)
-    #        # Callback function for optimization
-    #        function callback(p, l_train)
-    #            println("Training Loss: $(l_train)")
-    #            false
-    #        end
-    #        # Test optimization
-    #        optf =
-    #            Optimization.OptimizationFunction((p, _) -> loss(p), Optimization.AutoZygote())
-    #        optprob = Optimization.OptimizationProblem(optf, θ)
-    #        ClipAdam = OptimiserChain(Adam(1.0e-1), ClipGrad(1))
-    #        optim_result, optim_t, optim_mem, _ =
-    #            @timed Optimization.solve(optprob, ClipAdam; maxiters = 10, callback = callback)
-    #
-    #        # Final loss test
-    #        loss_final = loss(optim_result.u, 128)
-    #        @test loss_final < loss_0  # Ensure loss decreases after optimization
-    #    end
+    @testset "Training" begin
+        u_in = rand(T, size(u))
+        tgt = rand(T, size(u))
+        function loss(θ, batch = 16)
+            yout = model(u_in, θ, st)[1]
+            return sum(abs2, (yout .- tgt))
+        end
 
-    #    @testset "Full CNO model" begin
-    #        model, θ, st = cno(
-    #            T = T,
-    #            N = N,
-    #            D = D,
-    #            cutoff = cutoff,
-    #            ch_sizes = ch_,
-    #            activations = act,
-    #            down_factors = df,
-    #            k_radii = k_rad,
-    #            bottleneck_depths = bd,
-    #            rng = rng,
-    #            use_cuda = false,
-    #        )
-    #
-    #        @test size(model(u, θ, st)[1]) == size(u)
-    #        function loss(θ, batch = 16)
-    #            y = rand(T, N, N, 1, batch)
-    #            y = cat(y, y, dims = 3)
-    #            yout = model(y, θ, st)[1]
-    #            return sum(abs2, (yout .- y))
-    #        end
-    #        loss_0 = loss(θ, 128)
-    #        @test isfinite(loss_0)  # Ensure initial loss is a finite number
-    #        g = Zygote.gradient(θ -> loss(θ), θ)
-    #        @test !isnothing(g)  # Ensure gradient is calculated successfully
-    #        function callback(p, l_train)
-    #            println("Training Loss: $(l_train)")
-    #            false
-    #        end
-    #        optf =
-    #            Optimization.OptimizationFunction((p, _) -> loss(p), Optimization.AutoZygote())
-    #        optprob = Optimization.OptimizationProblem(optf, θ)
-    #        ClipAdam = OptimiserChain(Adam(1.0e-1), ClipGrad(1))
-    #        optim_result, optim_t, optim_mem, _ =
-    #            @timed Optimization.solve(optprob, ClipAdam, maxiters = 10, callback = callback)
-    #        loss_final = loss(optim_result.u, 128)
-    #        @test loss_final < loss_0
-    #    end
+        loss_0 = loss(θ, 128)
+        # Callback function for optimization
+        function callback(p, l_train)
+            println("Training Loss: $(l_train)")
+            false
+        end
+        # Test optimization
+        optf =
+            Optimization.OptimizationFunction((p, _) -> loss(p), Optimization.AutoZygote())
+        optprob = Optimization.OptimizationProblem(optf, θ)
+        ClipAdam = OptimiserChain(Adam(1.0e-1), ClipGrad(1))
+        optim_result, optim_t, optim_mem, _ =
+            @timed Optimization.solve(optprob, ClipAdam; maxiters = 10, callback = callback)
+
+        # Final loss test
+        loss_final = loss(optim_result.u, 128)
+        @test loss_final < loss_0  # Ensure loss decreases after optimization
+    end
+
+end
+
+if !CUDA.functional()
+    @test "CUDA not functional, skipping GPU tests"
+    return
+end
+dev = Lux.gpu_device()
+model = create_CNO(
+    T = T,
+    N = N,
+    D = D,
+    cutoff = cutoff,
+    ch_sizes = ch_,
+    activations = act,
+    down_factors = df,
+    k_radii = k_rad,
+    bottleneck_depths = bd,
+    force_cpu = false,
+)
+θ, st = Lux.setup(rng, model)
+θ = ComponentArray(θ)
+st = st |> dev
+θ = θ |> dev
+u = u |> dev
+
+@testset "CNO Model Training (GPU)" begin
+
+    @testset "Model output" begin
+        yout, _ = model(u, θ, st)
+        @test size(yout) == size(u)
+        @test yout !== u
+    end
+
+
+    @testset "Loss" begin
+        u_in = CUDA.rand(T, size(u))
+        tgt = CUDA.rand(T, size(u))
+
+        # Define loss function
+        function loss(θ, batch = 16)
+            yout, _ = model(u_in, θ, st)
+            return sum(abs2, (yout .- tgt))
+        end
+
+        loss_0 = loss(θ, 128)
+        @test isfinite(loss_0)  # Ensure initial loss is a finite number
+
+        y, back = Zygote.pullback(loss, θ)
+        @test y ≈ loss(θ)  # Ensure pullback is correct
+        y_bar = CUDA.rand(T, size(y))
+        θ_bar = back(y_bar)[1]
+        @test sum(θ_bar) !== 0.0  # Ensure gradient is non-zero
+
+        # Gradient calculation
+        g = Zygote.gradient(θ -> loss(θ), θ)
+        @test !isnothing(g)  # Ensure gradient is calculated successfully
+        @test sum(g) !== 0.0  # Ensure gradient is non-zero
+    end
+
+
+    @testset "Training" begin
+        u_in = CUDA.rand(T, size(u))
+        tgt = CUDA.rand(T, size(u))
+        function loss(θ, batch = 16)
+            yout, _ = model(u_in, θ, st)
+            return sum(abs2, (yout .- tgt))
+        end
+
+        loss_0 = loss(θ, 128)
+        # Callback function for optimization
+        function callback(p, l_train)
+            println("Training Loss (GPU): $(l_train)")
+            false
+        end
+        # Test optimization
+        optf =
+            Optimization.OptimizationFunction((p, _) -> loss(p), Optimization.AutoZygote())
+        optprob = Optimization.OptimizationProblem(optf, θ)
+        ClipAdam = OptimiserChain(Adam(1.0e-2), ClipGrad(1))
+        optim_result, optim_t, optim_mem, _ =
+            @timed Optimization.solve(optprob, ClipAdam; maxiters = 10, callback = callback)
+
+        # Final loss test
+        loss_final = loss(optim_result.u, 128)
+        @test loss_final < loss_0  # Ensure loss decreases after optimization
+    end
+
 end

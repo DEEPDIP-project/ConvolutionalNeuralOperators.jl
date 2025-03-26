@@ -12,6 +12,8 @@ using CairoMakie: Figure, Axis, heatmap, save, heatmap!, GridLayout
 using Images: load
 using CUDA
 
+CUDA.allowscalar(false)
+
 # Setup initial image and parameters
 N0 = 512
 T = Float32
@@ -41,7 +43,6 @@ actlayer_tanhshrink = create_CNOactivation(
 u_tanhshrink = actlayer_tanhshrink(u)
 
 @testset "CNO Activation (CPU)" begin
-
 
     @testset "Initial Image Dimensions" begin
         @test size(u0) == (N0, N0, D, 1)
@@ -89,6 +90,10 @@ u_tanhshrink = actlayer_tanhshrink(u)
 
 end
 
+if !CUDA.functional()
+    @test "CUDA not functional, skipping GPU tests"
+    return
+end
 # Prepare for GPU tests
 u = CuArray(u)
 actlayer_identity = create_CNOactivation(T, D, N, cutoff, activation_function = identity)
@@ -108,26 +113,47 @@ u_tanhshrink = actlayer_tanhshrink(u)
 
 
     @testset "Identity activation" begin
+        @test isa(u_identity, CuArray)
         @test size(u_identity) == size(u)
     end
 
     # Test create_CNOactivation with tanhshrink activation
     @testset "Tanhshrink activation" begin
+        @test isa(u_tanhshrink, CuArray)
         @test size(u_tanhshrink) == size(u)
     end
 
 
-    @testset "Activation AD" begin
-        result = actlayer_tanhshrink(u)
+    @testset "Activation AD identity" begin
+        result = actlayer_identity(u)
         @test sum(result) !== 0.0
 
-        y, back = Zygote.pullback(actlayer_tanhshrink, u)
+        y, back = Zygote._pullback(actlayer_identity, u)
         @test y == result
         y_bar = CUDA.rand(Float32, size(u))
         x_bar = CUDA.zeros(Float32, size(u))
-        x_bar = back(y_bar)
+        _, x_bar = back(y_bar)
         @test sum(x_bar) !== 0.0
         @test x_bar != y_bar
+        @test isa(x_bar, CuArray)
+        @test isa(y, CuArray)
+    end
+
+    @testset "Activation AD tanhshrink" begin
+        result = actlayer_tanhshrink(u)
+        @test sum(result) !== 0.0
+
+        y, back = Zygote._pullback(actlayer_tanhshrink, u)
+        @test y == result
+        y_bar = CUDA.rand(Float32, size(u))
+        x_bar = CUDA.zeros(Float32, size(u))
+        @test isa(x_bar, CuArray)
+        @test isa(y_bar, CuArray)
+        _, x_bar = back(y_bar)
+        @test sum(x_bar) !== 0.0
+        @test x_bar != y_bar
+        @test isa(x_bar, CuArray)
+        @test isa(y, CuArray)
     end
 
 end
