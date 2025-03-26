@@ -24,7 +24,40 @@ Pkg.add(url="git@github.com:DEEPDIP-project/ConvolutionalNeuralOperator.jl.git")
 
 ## Usage
 
-Look in `test/` for examples on how to use the package.
+You probably want to do something like
+
+```julia
+  closure, θ_start, st = cno(
+      T = T,
+      N = N,
+      D = D,
+      cutoff = cutoff,
+      ch_sizes = ch_,
+      activations = act,
+      down_factors = df,
+      k_radii = k_rad,
+      bottleneck_depths = bd,
+      rng = rng,
+      use_cuda = false,
+  )
+```
+
+to get the closure model, and then use it as a Lux model, or in CoupledNODE
+
+```julia
+  l, trainstate = CoupledNODE.train(
+      closure,
+      θ,
+      st,
+      dataloader,
+      loss;
+      tstate = trainstate,
+      nepochs = 2,
+      alg = Adam(T(1.0e-3),
+  )
+```
+
+Look in `test/` for more detailed examples on how to use the package, or look at the documentation.
 
 ## How to Cite
 
