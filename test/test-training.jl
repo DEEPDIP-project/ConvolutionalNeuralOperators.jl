@@ -125,6 +125,7 @@ if !CUDA.functional()
     @test "CUDA not functional, skipping GPU tests"
     return
 end
+CUDA.allowscalar(false)
 dev = Lux.gpu_device()
 model = create_CNO(
     T = T,

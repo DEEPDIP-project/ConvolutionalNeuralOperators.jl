@@ -294,10 +294,10 @@ function ((;)::CNO)(x, params, state)
     masks_down = state.masks_down
     masks_up = state.masks_up
     masks_bottlenecks = state.masks_bottlenecks
-    up_ch_ranges = Array(state.up_ch_ranges)
-    down_ch_ranges = Array(state.down_ch_ranges)
-    bottleneck_ranges = Array(state.bottleneck_ranges)
-    reversed_bottleneck_ranges = Array(state.reversed_bottleneck_ranges)
+    up_ch_ranges = Array(state.up_ch_ranges) |> Lux.cpu_device()
+    down_ch_ranges = Array(state.down_ch_ranges) |> Lux.cpu_device()
+    bottleneck_ranges = Array(state.bottleneck_ranges) |> Lux.cpu_device()
+    reversed_bottleneck_ranges = Array(state.reversed_bottleneck_ranges) |> Lux.cpu_device()
 
     # First thing to do is to crop the center of x along every dimension
     s0 = size(x)

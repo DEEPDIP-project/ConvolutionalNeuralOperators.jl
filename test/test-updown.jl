@@ -15,8 +15,6 @@ using ChainRulesTestUtils
 using ChainRulesCore
 
 
-CUDA.allowscalar(false)
-
 # Setup initial conditions
 N0 = 512
 T = Float32
@@ -192,6 +190,7 @@ if !CUDA.functional()
     @test "CUDA not functional, skipping GPU tests"
     return
 end
+CUDA.allowscalar(false)
 
 # Make into GPU
 u0 = CuArray(u0)

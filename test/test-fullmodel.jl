@@ -40,7 +40,6 @@ cutoff = 10
 
 
 @testset "Full model (CPU)" begin
-    return
 
     @testset "Full CNO model" begin
         model, θ, st = cno(
@@ -89,6 +88,7 @@ if !CUDA.functional()
     @test "CUDA not functional, skipping GPU tests"
     return
 end
+CUDA.allowscalar(false)
 @testset "Full model (GPU)" begin
 
     @testset "Full CNO model" begin
@@ -105,15 +105,11 @@ end
             rng = rng,
             use_cuda = true,
         )
-        @info typeof(model)
-        @info typeof(θ)
-        @info typeof(st)
 
         u_gpu = CuArray(u)
-        y, zz = model(u_gpu, θ, st)
-        @info typeof(y)
-        @info size(y)
-        #        @test size(model(u_gpu, θ, st)[1:1]) == size(u)
+        y, _ = model(u_gpu, θ, st)
+        @test size(y) == size(u)
+        @test isa(y, CuArray)
 
 
         return
