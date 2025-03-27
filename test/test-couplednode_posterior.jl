@@ -168,6 +168,8 @@ if !CUDA.functional()
     @test "CUDA not functional, skipping GPU tests"
     return
 end
+CUDA.allowscalar(false)
+
 @testset "CoupledNODE integration (GPU)" begin
     # Create the model
     closure, θ_start, st = cno(

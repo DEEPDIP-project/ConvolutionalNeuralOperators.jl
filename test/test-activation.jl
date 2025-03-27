@@ -12,7 +12,6 @@ using CairoMakie: Figure, Axis, heatmap, save, heatmap!, GridLayout
 using Images: load
 using CUDA
 
-CUDA.allowscalar(false)
 
 # Setup initial image and parameters
 N0 = 512
@@ -94,6 +93,8 @@ if !CUDA.functional()
     @test "CUDA not functional, skipping GPU tests"
     return
 end
+CUDA.allowscalar(false)
+
 # Prepare for GPU tests
 u = CuArray(u)
 actlayer_identity = create_CNOactivation(T, D, N, cutoff, activation_function = identity)

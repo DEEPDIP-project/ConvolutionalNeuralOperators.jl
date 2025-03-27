@@ -15,17 +15,11 @@ using FFTW: fft, ifft
 using ChainRulesCore
 
 rng = Random.Xoshiro(123)
-CUDA.allowscalar(false)
 
 function reference_convolve(x, k)
-    if k isa SubArray && parent(k) isa CuArray
-        k = CuArray(collect(k))
-    end
-    if x isa SubArray && parent(x) isa CuArray
-        x = CuArray(collect(x))
-    end
     fft_x = fft(x, (1, 2))
     fft_k = fft(k, (2, 3))
+    # Can not use for loops if you want it to be differentiable
     #    ffty = zeros(ComplexF32, size(x, 1), size(x, 2), size(k, 1), size(x, 4))
     #    for c = 1:size(k, 1)
     #        for ci = 1:size(x, 3)
@@ -33,7 +27,7 @@ function reference_convolve(x, k)
     #        end
     #    end
 
-    # Can not use for loops if you want it to be differentiable
+    # No-loops alternative
     ffty = [
         reduce(+, [fft_x[:, :, ci, :] .* fft_k[c, :, :] for ci = 1:size(x, 3)]) for
         c = 1:size(k, 1)
@@ -112,6 +106,8 @@ if !CUDA.functional()
     @test "CUDA not functional, skipping GPU tests"
     return
 end
+CUDA.allowscalar(false)
+
 @testset "Convolution (GPU)" begin
     @testset "Forward" begin
         x = CUDA.ones(Float32, 16, 16, 2, 1)

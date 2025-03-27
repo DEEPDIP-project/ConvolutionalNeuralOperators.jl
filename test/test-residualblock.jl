@@ -7,7 +7,6 @@ using Zygote: Zygote
 using ComponentArrays: ComponentArray
 using CUDA
 
-CUDA.allowscalar(false)
 
 x = rand(Float32, 16, 16, 2, 1)
 k_bottlenecks = rand(Float32, 100, 16, 16)
@@ -52,6 +51,8 @@ if !CUDA.functional()
     @test "CUDA not functional, skipping GPU tests"
     return
 end
+CUDA.allowscalar(false)
+
 # Prepare for GPU tests
 x = CUDA.rand(Float32, 16, 16, 2, 1)
 k_bottlenecks = CUDA.rand(Float32, 100, 16, 16)

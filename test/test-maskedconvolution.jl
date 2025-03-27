@@ -16,7 +16,6 @@ using FFTW: fft, ifft
 using ChainRulesCore
 
 rng = Random.Xoshiro(123)
-CUDA.allowscalar(false)
 
 
 @testset "Masked-Convolution (CPU)" begin
@@ -99,6 +98,7 @@ if !CUDA.functional()
     @test "CUDA not functional, skipping GPU tests"
     return
 end
+CUDA.allowscalar(false)
 
 @testset "Masked-Convolution (GPU)" begin
     @testset "Forward" begin
