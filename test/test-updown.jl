@@ -186,22 +186,22 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
     end
 end
 
-if !CUDA.functional()
-    @test "CUDA not functional, skipping GPU tests"
-    return
-end
-CUDA.allowscalar(false)
-
-# Make into GPU
-u0 = CuArray(u0)
-ds0 = create_CNOdownsampler(T, D, N0, down_factor0, cutoff)
-u = ds0(u0)
-ds = create_CNOdownsampler(T, D, N, down_factor, cutoff)
-us = create_CNOupsampler(T, D, N, up_factor, cutoff)
-ds2 = create_CNOdownsampler(T, D, N * up_factor, down_factor, cutoff)
-us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff)
 
 @testset "CNO Downsampling and Upsampling (GPU)" begin
+    if !CUDA.functional()
+        @warn "CUDA not functional, skipping GPU tests"
+        return
+    end
+    CUDA.allowscalar(false)
+
+    # Make into GPU
+    u0 = CuArray(u0)
+    ds0 = create_CNOdownsampler(T, D, N0, down_factor0, cutoff)
+    u = ds0(u0)
+    ds = create_CNOdownsampler(T, D, N, down_factor, cutoff)
+    us = create_CNOupsampler(T, D, N, up_factor, cutoff)
+    ds2 = create_CNOdownsampler(T, D, N * up_factor, down_factor, cutoff)
+    us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff)
 
     @testset "Initial Image Dimensions" begin
         @test size(u0) == (N0, N0, D, 1)
