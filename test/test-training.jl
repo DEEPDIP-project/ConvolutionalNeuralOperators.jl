@@ -121,31 +121,31 @@ model = create_CNO(
 
 end
 
-if !CUDA.functional()
-    @test "CUDA not functional, skipping GPU tests"
-    return
-end
-CUDA.allowscalar(false)
-dev = Lux.gpu_device()
-model = create_CNO(
-    T = T,
-    N = N,
-    D = D,
-    cutoff = cutoff,
-    ch_sizes = ch_,
-    activations = act,
-    down_factors = df,
-    k_radii = k_rad,
-    bottleneck_depths = bd,
-    force_cpu = false,
-)
-θ, st = Lux.setup(rng, model)
-θ = ComponentArray(θ)
-st = st |> dev
-θ = θ |> dev
-u = u |> dev
 
 @testset "CNO Model Training (GPU)" begin
+    if !CUDA.functional()
+        @warn "CUDA not functional, skipping GPU tests"
+        return
+    end
+    CUDA.allowscalar(false)
+    dev = Lux.gpu_device()
+    model = create_CNO(
+        T = T,
+        N = N,
+        D = D,
+        cutoff = cutoff,
+        ch_sizes = ch_,
+        activations = act,
+        down_factors = df,
+        k_radii = k_rad,
+        bottleneck_depths = bd,
+        force_cpu = false,
+    )
+    θ, st = Lux.setup(rng, model)
+    θ = ComponentArray(θ)
+    st = st |> dev
+    θ = θ |> dev
+    u = u |> dev
 
     @testset "Model output" begin
         yout, _ = model(u, θ, st)

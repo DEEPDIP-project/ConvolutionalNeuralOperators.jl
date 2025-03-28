@@ -84,12 +84,12 @@ cutoff = 10
     end
 end
 
-if !CUDA.functional()
-    @test "CUDA not functional, skipping GPU tests"
-    return
-end
-CUDA.allowscalar(false)
 @testset "Full model (GPU)" begin
+    if !CUDA.functional()
+        @warn "CUDA not functional, skipping GPU tests"
+        return
+    end
+    CUDA.allowscalar(false)
 
     @testset "Full CNO model" begin
         model, θ, st = cno(

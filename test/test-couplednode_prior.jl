@@ -123,13 +123,14 @@ batch = 4
 
 end
 
-if !CUDA.functional()
-    @test "CUDA not functional, skipping GPU tests"
-    return
-end
-CUDA.allowscalar(false)
 
 @testset "CoupledNODE integration (GPU)" begin
+    if !CUDA.functional()
+        @warn "CUDA not functional, skipping GPU tests"
+        return
+    end
+    CUDA.allowscalar(false)
+
     # Create the model
     closure, θ_start, st = cno(
         T = T,

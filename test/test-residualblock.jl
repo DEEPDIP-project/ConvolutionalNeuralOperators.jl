@@ -47,19 +47,19 @@ mask = rand(Float32, 16, 16)
 
 end
 
-if !CUDA.functional()
-    @test "CUDA not functional, skipping GPU tests"
-    return
-end
-CUDA.allowscalar(false)
-
-# Prepare for GPU tests
-x = CUDA.rand(Float32, 16, 16, 2, 1)
-k_bottlenecks = CUDA.rand(Float32, 100, 16, 16)
-k_residual = ((1:2,), (10:11,))
-mask = CUDA.rand(Float32, 16, 16)
 
 @testset "Residual block (GPU)" begin
+    if !CUDA.functional()
+        @warn "CUDA not functional, skipping GPU tests"
+        return
+    end
+    CUDA.allowscalar(false)
+
+    # Prepare for GPU tests
+    x = CUDA.rand(Float32, 16, 16, 2, 1)
+    k_bottlenecks = CUDA.rand(Float32, 100, 16, 16)
+    k_residual = ((1:2,), (10:11,))
+    mask = CUDA.rand(Float32, 16, 16)
 
     y = apply_residual_blocks(x, k_bottlenecks, k_residual, mask, identity)
 

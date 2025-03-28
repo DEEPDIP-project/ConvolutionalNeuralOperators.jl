@@ -89,21 +89,22 @@ u_tanhshrink = actlayer_tanhshrink(u)
 
 end
 
-if !CUDA.functional()
-    @test "CUDA not functional, skipping GPU tests"
-    return
-end
-CUDA.allowscalar(false)
-
-# Prepare for GPU tests
-u = CuArray(u)
-actlayer_identity = create_CNOactivation(T, D, N, cutoff, activation_function = identity)
-u_identity = actlayer_identity(u)
-actlayer_tanhshrink =
-    create_CNOactivation(T, D, N, cutoff, activation_function = tanhshrink)
-u_tanhshrink = actlayer_tanhshrink(u)
 
 @testset "CNO Activation (GPU)" begin
+    if !CUDA.functional()
+        @warn "CUDA not functional, skipping GPU tests"
+        return
+    end
+    CUDA.allowscalar(false)
+
+    # Prepare for GPU tests
+    u = CuArray(u)
+    actlayer_identity =
+        create_CNOactivation(T, D, N, cutoff, activation_function = identity)
+    u_identity = actlayer_identity(u)
+    actlayer_tanhshrink =
+        create_CNOactivation(T, D, N, cutoff, activation_function = tanhshrink)
+    u_tanhshrink = actlayer_tanhshrink(u)
 
 
     @testset "Initial Image Dimensions" begin

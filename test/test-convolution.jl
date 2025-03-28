@@ -102,13 +102,13 @@ end
 
 end
 
-if !CUDA.functional()
-    @test "CUDA not functional, skipping GPU tests"
-    return
-end
-CUDA.allowscalar(false)
 
 @testset "Convolution (GPU)" begin
+    if !CUDA.functional()
+        @warn "CUDA not functional, skipping GPU tests"
+        return
+    end
+    CUDA.allowscalar(false)
     @testset "Forward" begin
         x = CUDA.ones(Float32, 16, 16, 2, 1)
         k = CUDA.zeros(Float32, 5, 16, 16)
