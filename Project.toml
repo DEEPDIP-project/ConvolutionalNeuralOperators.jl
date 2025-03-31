@@ -19,15 +19,19 @@ LuxCore = "bb33d45b-7691-41d6-9220-0943567d0623"
 NNlib = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
-[sources]
-CoupledNODE= {rev = "main", url = "https://github.com/DEEPDIP-project/CoupledNODE.jl.git"}
-NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"}
+[sources.CoupledNODE]
+rev = "main"
+url = "https://github.com/DEEPDIP-project/CoupledNODE.jl.git"
+
+[sources.NeuralClosure]
+rev = "main"
+url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"
 
 [compat]
 AbstractFFTs = "1.5.0"
 Atomix = "1.1.1"
 CUDA = "5"
-CairoMakie = "0.12"
+CairoMakie = "0.12, 0.13"
 ChainRulesCore = "1.25.1"
 ChainRulesTestUtils = "1.13.0"
 ComponentArrays = "0.15"
