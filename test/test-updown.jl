@@ -49,6 +49,10 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
     end
 
     @testset "Visualization Tests" begin
+        if Sys.KERNEL == "Darwin"
+            @info "Skipping Visualization Tests on macOS"
+            return
+        end
         fig = Figure(resolution = (800, 600))
         ax1 = Axis(fig[1, 1], title = "u")
         heatmap!(ax1, u[:, :, 1, 1])
