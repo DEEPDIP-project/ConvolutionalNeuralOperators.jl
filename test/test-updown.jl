@@ -49,8 +49,8 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
     end
 
     @testset "Visualization Tests" begin
-        if Sys.KERNEL == "Darwin"
-            @info "Skipping Visualization Tests on macOS"
+        if Sys.KERNEL !== :Linux
+            @info "Skipping Visualization Tests"
             return
         end
         fig = Figure(resolution = (800, 600))

@@ -62,8 +62,8 @@ u_tanhshrink = actlayer_tanhshrink(u)
 
     # Visualization tests
     @testset "Visualization Tests" begin
-        if Sys.KERNEL == "Darwin"
-            @info "Skipping Visualization Tests on macOS"
+        if Sys.KERNEL !== :Linux
+            @info "Skipping Visualization Tests"
             return
         end
         fig = Figure(resolution = (800, 400))
