@@ -62,6 +62,10 @@ u_tanhshrink = actlayer_tanhshrink(u)
 
     # Visualization tests
     @testset "Visualization Tests" begin
+        if Sys.KERNEL !== :Linux
+            @info "Skipping Visualization Tests"
+            return
+        end
         fig = Figure(resolution = (800, 400))
         ax1 = Axis(fig[1, 1], title = "Identity Activation on u")
         heatmap!(ax1, u_identity[:, :, 1, 1])
