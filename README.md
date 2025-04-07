@@ -24,7 +24,7 @@ Pkg.add(url="git@github.com:DEEPDIP-project/ConvolutionalNeuralOperator.jl.git")
 
 ## Usage
 
-You probably want to do something like
+You probably want to use the `cno` function to create a closure model, which can be used in CoupledNODE or as a Lux model.
 
 ```julia
   closure, θ_start, st = cno(
