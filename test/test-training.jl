@@ -29,6 +29,7 @@ down_factor0 = 8
 cutoff = 0.1
 ds = create_CNOdownsampler(T, D, N0, down_factor0, cutoff, force_cpu = true)
 u = ds(u0)
+ug = CuArray(u)
 N = size(u)[1]
 # Model configuration
 ch_ = [2]
@@ -145,7 +146,7 @@ end
     θ = ComponentArray(θ)
     st = st |> dev
     θ = θ |> dev
-    u = u |> dev
+    u = ug
 
     @testset "Model output" begin
         yout, _ = model(u, θ, st)
