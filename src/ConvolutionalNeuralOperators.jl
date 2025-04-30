@@ -1,7 +1,13 @@
 module ConvolutionalNeuralOperators
 
-using CUDA: CUDA
+using CUDA
 ArrayType = CUDA.functional() ? CUDA.CuArray : Array
+using KernelAbstractions
+using Lux
+using LuxCUDA
+using ChainRulesCore
+using AbstractFFTs: fft, ifft
+using Random: AbstractRNG
 
 include("filters.jl")
 include("convolution.jl")

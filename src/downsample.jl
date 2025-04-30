@@ -1,8 +1,3 @@
-using AbstractFFTs: fft, ifft
-using KernelAbstractions
-using CUDA
-using ChainRulesCore
-
 function downsample_kernel(mydev, x_filter, N, down_factor::Int)
     backend = mydev["bck"]
     workgroupsize = mydev["workgroupsize"]
@@ -91,7 +86,7 @@ function create_CNOdownsampler(
         backend = CUDABackend()
         workgroupsize = 256
     else
-        backend = CPU()
+        backend = KernelAbstractions.CPU()
         workgroupsize = 64
     end
     mydev = Dict("bck" => backend, "workgroupsize" => workgroupsize, "T" => T)

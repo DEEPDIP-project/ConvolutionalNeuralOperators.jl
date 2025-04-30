@@ -1,8 +1,3 @@
-using AbstractFFTs: fft, ifft
-using KernelAbstractions
-using CUDA
-using ChainRulesCore
-
 function create_filter(T, grid, cutoff; sigma = 1, filter_type = "sinc", force_cpu = false)
     # TODO extend to multiple dimensions
     N = length(grid)

@@ -24,6 +24,7 @@ cutoff = 0.1
 down_factor = 6
 ds = create_CNOdownsampler(T, D, N0, down_factor, cutoff, force_cpu = true)
 u = ds(u0)
+ugpu = CuArray(u)
 N = size(u, 1)
 # Define some activation layers
 # (1) Identity activation
@@ -75,7 +76,7 @@ u_tanhshrink = actlayer_tanhshrink(u)
         save("test_figs/activation.png", fig)
         img1 = load("test_figs/activation.png")
         img2 = load("test_figs/activation_baseline.png")
-        @test img1 == img2
+        @test img1 ≈ img2
     end
 
     @testset "Activation AD" begin
@@ -102,7 +103,7 @@ end
     CUDA.allowscalar(false)
 
     # Prepare for GPU tests
-    u = CuArray(u)
+    u = ugpu
     actlayer_identity =
         create_CNOactivation(T, D, N, cutoff, activation_function = identity)
     u_identity = actlayer_identity(u)

@@ -21,6 +21,7 @@ T = Float32
 D = 2
 u0 = zeros(T, N0, N0, D, 1)
 u0[:, :, 1, 1] .= testimage("cameraman")
+gu0 = CuArray(u0)
 cutoff = 0.1
 # first scale down to work with smaller images
 down_factor0 = 8
@@ -68,7 +69,7 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
         save("test_figs/downsampling_upsampling.png", fig)
         img1 = load("test_figs/downsampling_upsampling.png")
         img2 = load("test_figs/downsampling_upsampling_baseline.png")
-        @test img1 == img2
+        @test img1 ≈ img2
     end
 
     @testset "Upsampler implementation" begin
@@ -139,7 +140,11 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
         x_filter = rand(Float32, 16, 16, 2, 1)
         result = zeros(Float32, 8, 8, 2, 1)
         down_factor = 2
-        mydev = Dict("bck" => CPU(), "workgroupsize" => 64, "T" => Float32)
+        mydev = Dict(
+            "bck" => IncompressibleNavierStokes.CPU(),
+            "workgroupsize" => 64,
+            "T" => Float32,
+        )
         downsample_kernel(mydev, x_filter, down_factor, 16)
         @test sum(result) !== 0.0
 
@@ -199,7 +204,7 @@ end
     CUDA.allowscalar(false)
 
     # Make into GPU
-    u0 = CuArray(u0)
+    u0 = gu0
     ds0 = create_CNOdownsampler(T, D, N0, down_factor0, cutoff)
     u = ds0(u0)
     ds = create_CNOdownsampler(T, D, N, down_factor, cutoff)

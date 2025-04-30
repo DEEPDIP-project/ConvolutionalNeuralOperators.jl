@@ -1,7 +1,3 @@
-using Lux: Lux, relu, leakyrelu
-using LuxCUDA
-using LuxCore: AbstractLuxLayer
-using Random: AbstractRNG
 using ComponentArrays: ComponentArray
 using NNlib: pad_circular
 

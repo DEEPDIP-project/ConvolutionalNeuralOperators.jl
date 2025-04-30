@@ -51,7 +51,7 @@ batch = 4
     # Read conf
     NS = Base.get_extension(CoupledNODE, :NavierStokes)
     conf = NS.read_config("./config.yaml")
-    conf["params"]["backend"] = CPU()
+    conf["params"]["backend"] = IncompressibleNavierStokes.CPU()
 
     # get params
     params = NS.load_params(conf)

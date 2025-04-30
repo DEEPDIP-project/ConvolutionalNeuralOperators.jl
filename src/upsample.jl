@@ -1,7 +1,3 @@
-using AbstractFFTs: fft, ifft
-using KernelAbstractions
-using CUDA
-using ChainRulesCore
 
 function expand_with_zeros(mydev, x, N, up_factor)
     backend = mydev["bck"]
@@ -78,7 +74,7 @@ function create_CNOupsampler(
         backend = CUDABackend()
         workgroupsize = 256
     else
-        backend = CPU()
+        backend = KernelAbstractions.CPU()
         workgroupsize = 64
     end
     mydev = Dict("bck" => backend, "workgroupsize" => workgroupsize, "T" => T)
