@@ -139,7 +139,11 @@ us2 = create_CNOupsampler(T, D, Int(N / down_factor), up_factor, cutoff, force_c
         x_filter = rand(Float32, 16, 16, 2, 1)
         result = zeros(Float32, 8, 8, 2, 1)
         down_factor = 2
-        mydev = Dict("bck" => CPU(), "workgroupsize" => 64, "T" => Float32)
+        mydev = Dict(
+            "bck" => IncompressibleNavierStokes.CPU(),
+            "workgroupsize" => 64,
+            "T" => Float32,
+        )
         downsample_kernel(mydev, x_filter, down_factor, 16)
         @test sum(result) !== 0.0
 

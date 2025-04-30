@@ -1,9 +1,6 @@
-using Lux: Lux, relu, leakyrelu
-using LuxCUDA
 using LuxCore: AbstractLuxLayer
 using Random: AbstractRNG
 using ComponentArrays: ComponentArray
-using KernelAbstractions
 using Atomix: @atomic
 using AbstractFFTs: fft, ifft
 using FFTW: fft, ifft
@@ -31,7 +28,7 @@ function convolve(x, k)
     else
         ffty_r = zeros(Float32, size(x, 1), size(x, 2), size(k, 1), size(x, 4))
         ffty_im = zeros(Float32, size(x, 1), size(x, 2), size(k, 1), size(x, 4))
-        backend = CPU()
+        backend = KernelAbstractions.CPU()
         workgroupsize = 64
     end
 
@@ -83,35 +80,37 @@ function ChainRulesCore.rrule(::typeof(convolve), x, k)
             x_bar_im = zeros(Float32, size(x))
             k_bar_re = zeros(Float32, size(k))
             k_bar_im = zeros(Float32, size(k))
-            backend = CPU()
+            backend = KernelAbstractions.CPU()
             workgroupsize = 64
         end
 
         # Launch the adjoint kernel for x
-        convolve_adjoint_x_kernel(backend, workgroupsize)(
-            x_bar_re,
-            x_bar_im,
-            ffty_bar,
-            fft_k;
-            ndrange = size(x),
-        )
+        tx_bar = @thunk begin
+            convolve_adjoint_x_kernel(backend, workgroupsize)(
+                x_bar_re,
+                x_bar_im,
+                ffty_bar,
+                fft_k;
+                ndrange = size(x),
+            )
+            x_bar = ComplexF32.(x_bar_re, x_bar_im)
+            x_bar = real(ifft(x_bar, (1, 2)))
+        end
         # Launch the adjoint kernel for k
-        convolve_adjoint_k_kernel(backend, workgroupsize)(
-            k_bar_re,
-            k_bar_im,
-            fft_x,
-            ffty_bar,
-            size(x, 3);
-            ndrange = size(k),
-        )
+        tk_bar = @thunk begin
+            convolve_adjoint_k_kernel(backend, workgroupsize)(
+                k_bar_re,
+                k_bar_im,
+                fft_x,
+                ffty_bar,
+                size(x, 3);
+                ndrange = size(k),
+            )
+            k_bar = ComplexF32.(k_bar_re, k_bar_im)
+            k_bar = real(ifft(k_bar, (2, 3)))
+        end
 
-        x_bar = ComplexF32.(x_bar_re, x_bar_im)
-        k_bar = ComplexF32.(k_bar_re, k_bar_im)
-
-        x_bar = real(ifft(x_bar, (1, 2)))
-        k_bar = real(ifft(k_bar, (2, 3)))
-
-        return NoTangent(), x_bar, k_bar
+        return NoTangent(), tx_bar, tk_bar
     end
     return y, convolve_pb
 end
