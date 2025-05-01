@@ -29,7 +29,7 @@ down_factor0 = 8
 cutoff = 0.1
 ds = create_CNOdownsampler(T, D, N0, down_factor0, cutoff, force_cpu = true)
 u = ds(u0)
-if !CUDA.functional()
+if CUDA.functional()
     ug = CuArray(u)
 end
 N = size(u)[1]

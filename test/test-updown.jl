@@ -21,7 +21,7 @@ T = Float32
 D = 2
 u0 = zeros(T, N0, N0, D, 1)
 u0[:, :, 1, 1] .= testimage("cameraman")
-if !CUDA.functional()
+if CUDA.functional()
     gu0 = CuArray(u0)
 end
 cutoff = 0.1
