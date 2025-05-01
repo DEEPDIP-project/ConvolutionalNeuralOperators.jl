@@ -24,7 +24,9 @@ cutoff = 0.1
 down_factor = 6
 ds = create_CNOdownsampler(T, D, N0, down_factor, cutoff, force_cpu = true)
 u = ds(u0)
-ugpu = CuArray(u)
+if !CUDA.functional()
+    ugpu = CuArray(u)
+end
 N = size(u, 1)
 # Define some activation layers
 # (1) Identity activation
