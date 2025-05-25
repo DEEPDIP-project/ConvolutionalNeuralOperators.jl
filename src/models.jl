@@ -383,7 +383,7 @@ function ((;)::CNO)(x, params, state)
         )
         # concatenate with the corresponding bottleneck
         y = cat(y, bottlenecks_out[i], dims = D + 1)
-        # apply the last bottleneck
+        # apply the last bottleneck that combines the two branches
         # ! do not forget to reverse the bottleneck ranges
         y = apply_masked_convolution(
             y,

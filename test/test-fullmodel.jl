@@ -112,7 +112,6 @@ end
         @test isa(y, CuArray)
 
 
-        return
         u_in = rand(T, size(u))
         tgt = rand(T, size(u))
         function loss(θ, batch = 16)

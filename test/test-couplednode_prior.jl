@@ -83,13 +83,11 @@ batch = 4
         pairs = @. Symbol(k) => v
         (; pairs...)
     end
-    data_train = []
-    data_i = namedtupleload("data_train.jld2")
-    push!(data_train, hcat(data_i))
+    data_train = load("data_train.jld2", "data_train")
 
     # Create the io array
     NS = Base.get_extension(CoupledNODE, :NavierStokes)
-    io_train = NS.create_io_arrays_priori(data_train, setup)
+    io_train = NS.create_io_arrays_priori(data_train, setup[1])
 
     # Create the dataloader
     θ = device(copy(θ_start))
@@ -186,13 +184,11 @@ end
         pairs = @. Symbol(k) => v
         (; pairs...)
     end
-    data_train = []
-    data_i = namedtupleload("data_train.jld2")
-    push!(data_train, hcat(data_i))
+    data_train = load("data_train.jld2", "data_train")
 
     # Create the io array
     NS = Base.get_extension(CoupledNODE, :NavierStokes)
-    io_train = NS.create_io_arrays_priori(data_train, setup)
+    io_train = NS.create_io_arrays_priori(data_train, setup[1], device)
 
     # Create the dataloader
     θ = device(copy(θ_start))

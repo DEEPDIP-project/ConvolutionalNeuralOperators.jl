@@ -150,9 +150,8 @@ end
 
 function apply_masked_convolution(y, k, mask)
     # to get the correct k i have to reshape+mask+trim
-    # TODO: i don't like this...
-    # ! Zygote does not like that you reuse variable names so, this makes it even uglier with the definition of k2 and k3
-    # ! also Zygote wants the mask to be explicitely defined as a vector so i have to pull it out from the tuple via mask=masks[i]
+    # ! Zygote does not like that you reuse variable names so k2 and k3 needs to be defined
+    # ! also Zygote wants the mask to be explicitely defined as a vector so mask_kernel is needed
 
     # Apply the mask to the kernel
     k2 = mask_kernel(k, mask)
@@ -185,7 +184,7 @@ function ChainRulesCore.rrule(::typeof(trim_kernel), k, sizex)
     end
 
     function trim_kernel_pullback(y_bar)
-        k_bar[:, 1:size(y_bar)[2], 1:size(y_bar)[3]] .= y_bar
+        k_bar[:, 1:size(unthunk(y_bar))[2], 1:size(unthunk(y_bar))[3]] .= y_bar
         return NoTangent(), k_bar, NoTangent()
     end
     return y, trim_kernel_pullback
