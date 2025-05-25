@@ -112,8 +112,8 @@ end
         @test isa(y, CuArray)
 
 
-        u_in = rand(T, size(u))
-        tgt = rand(T, size(u))
+        u_in = CUDA.rand(T, size(u))
+        tgt = CUDA.rand(T, size(u))
         function loss(θ, batch = 16)
             yout = model(u_in, θ, st)[1]
             return sum(abs2, (yout .- tgt))

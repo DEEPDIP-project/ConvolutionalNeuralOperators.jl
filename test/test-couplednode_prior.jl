@@ -92,7 +92,7 @@ batch = 4
     # Create the dataloader
     θ = device(copy(θ_start))
     dataloader_prior = NS.create_dataloader_prior(
-        io_train[1];
+        io_train;
         batchsize = 4,
         rng = Random.Xoshiro(24),
         device = device,
@@ -193,14 +193,14 @@ end
     # Create the dataloader
     θ = device(copy(θ_start))
     dataloader_prior = NS.create_dataloader_prior(
-        io_train[1];
+        io_train;
         batchsize = 4,
         rng = Random.Xoshiro(24),
         device = device,
     )
     train_data_priori = dataloader_prior()
-    @test isa(train_data_priori[1], CuArray)
-    @test isa(train_data_priori[2], CuArray)
+    @test is_on_gpu(train_data_priori[1])
+    @test is_on_gpu(train_data_priori[2])
 
     l0 = CoupledNODE.loss_priori_lux(closure, θ, st, train_data_priori)[1]
     @test isnan(l0) == false

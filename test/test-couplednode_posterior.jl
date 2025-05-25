@@ -101,7 +101,7 @@ batch = 4
 
     # Create the right hand side and the loss
     dudt_nn = NS.create_right_hand_side_with_closure(setup[1], psolver, closure, st)
-    griddims = ((:) for _ = 1:(ndims(u)-2))
+    griddims = ((:) for _ = 1:D)
     loss = CoupledNODE.create_loss_post_lux(
         dudt_nn,
         griddims,
@@ -125,12 +125,10 @@ batch = 4
     end
     tspan = get_tspan(t)
     prob = ODEProblem(dudt_nn, x, tspan, θ)
-    pred = Array(
-        solve(prob, Tsit5(); u0 = x, p = θ, adaptive = false, saveat = Array(t), dt = dt),
-    )
+    pred = Array(solve(prob, Tsit5(); u0 = x, p = θ, adaptive = true, saveat = Array(t)))
 
     # Test the forward pass
-    @test size(pred[:, :, :, 1, 2:end]) == size(y)
+    @test size(pred[:, :, :, 2:end]) == size(y)
 
 
     # Test the backward pass
@@ -245,7 +243,7 @@ end
 
     # Create the right hand side and the loss
     dudt_nn = NS.create_right_hand_side_with_closure(setup[1], psolver, closure, st)
-    griddims = ((:) for _ = 1:(ndims(u)-2))
+    griddims = ((:) for _ = 1:D)
     loss = CoupledNODE.create_loss_post_lux(
         dudt_nn,
         griddims,
@@ -257,20 +255,18 @@ end
 
     # For testing reason, explicitely set up the probelm
     # Notice that this is automatically done in CoupledNODE
-    x = u[griddims..., :, 1]
-    y = u[griddims..., :, 2:end] # remember to discard sol at the initial time step
-    tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
-    dt = CUDA.allowscalar() do
-        t[2] .- t[1]
+    x, y = nothing, nothing
+    CUDA.allowscalar() do
+        x = u[griddims..., :, 1, 1]
+        y = u[griddims..., :, 1, 2:end] # remember to discard sol at the initial time step
     end
+    tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
     function get_tspan(t)
         return (Array(t)[1], Array(t)[end])
     end
     tspan = get_tspan(t)
     prob = ODEProblem(dudt_nn, x, tspan, θ)
-    pred = Array(
-        solve(prob, Tsit5(); u0 = x, p = θ, adaptive = false, saveat = Array(t), dt = dt),
-    )
+    pred = Array(solve(prob, Tsit5(); u0 = x, p = θ, adaptive = true, saveat = Array(t)))
 
     # Test the forward pass
     @test size(pred[:, :, :, 2:end]) == size(y)

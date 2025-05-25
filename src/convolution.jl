@@ -66,7 +66,8 @@ function ChainRulesCore.rrule(::typeof(convolve), x, k)
     fft_k = fft(k, (2, 3))
 
     function convolve_pb(y_bar)
-        ffty_bar = fft(y_bar, (1, 2))
+        yb = unthunk(y_bar)
+        ffty_bar = fft(yb, (1, 2))
 
         if CUDA.functional() && k isa CuArray
             x_bar_re = CUDA.zeros(Float32, size(x))
@@ -156,8 +157,9 @@ function apply_masked_convolution(y, k, mask)
     # Apply the mask to the kernel
     k2 = mask_kernel(k, mask)
 
-    # Adjust the kernel size to match the input dimensions
+    ## Adjust the kernel size to match the input dimensions
     k3 = trim_kernel(k2, size(y))
+    #k3 = k2
 
     # Apply the convolution
     y = convolve(y, k3)
@@ -177,18 +179,18 @@ end
 
 function ChainRulesCore.rrule(::typeof(trim_kernel), k, sizex)
     y = trim_kernel(k, sizex)
-    if k isa CuArray
-        k_bar = CUDA.zeros(Float32, size(k))
-    else
-        k_bar = zeros(Float32, size(k))
-    end
+    k_bar = similar(k, Float32)
 
     function trim_kernel_pullback(y_bar)
-        k_bar[:, 1:size(unthunk(y_bar))[2], 1:size(unthunk(y_bar))[3]] .= y_bar
+        yb = unthunk(y_bar)
+        sz2, sz3 = size(yb, 2), size(yb, 3)
+        k_bar .= 0  # clear first to be safe
+        k_bar[:, 1:sz2, 1:sz3] .= yb
         return NoTangent(), k_bar, NoTangent()
     end
     return y, trim_kernel_pullback
 end
+
 
 
 function mask_kernel(k, mask)

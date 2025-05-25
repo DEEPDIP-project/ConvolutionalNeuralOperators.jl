@@ -56,7 +56,7 @@ function ChainRulesCore.rrule(
 
         dk_pb!(backend, workgroupsize)(
             x_filter_bar,
-            result_bar,
+            unthunk(result_bar),
             down_factor;
             ndrange = downsampled_size,
         )
