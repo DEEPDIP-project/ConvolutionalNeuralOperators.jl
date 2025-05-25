@@ -83,18 +83,16 @@ batch = 4
         pairs = @. Symbol(k) => v
         (; pairs...)
     end
-    data_train = []
-    data_i = namedtupleload("data_train.jld2")
-    push!(data_train, hcat(data_i))
+    data_train = load("data_train.jld2", "data_train")
 
     # Create the io array
     NS = Base.get_extension(CoupledNODE, :NavierStokes)
-    io_train = NS.create_io_arrays_priori(data_train, setup)
+    io_train = NS.create_io_arrays_priori(data_train, setup[1])
 
     # Create the dataloader
     θ = device(copy(θ_start))
     dataloader_prior = NS.create_dataloader_prior(
-        io_train[1];
+        io_train;
         batchsize = 4,
         rng = Random.Xoshiro(24),
         device = device,
@@ -186,25 +184,23 @@ end
         pairs = @. Symbol(k) => v
         (; pairs...)
     end
-    data_train = []
-    data_i = namedtupleload("data_train.jld2")
-    push!(data_train, hcat(data_i))
+    data_train = load("data_train.jld2", "data_train")
 
     # Create the io array
     NS = Base.get_extension(CoupledNODE, :NavierStokes)
-    io_train = NS.create_io_arrays_priori(data_train, setup)
+    io_train = NS.create_io_arrays_priori(data_train, setup[1], device)
 
     # Create the dataloader
     θ = device(copy(θ_start))
     dataloader_prior = NS.create_dataloader_prior(
-        io_train[1];
+        io_train;
         batchsize = 4,
         rng = Random.Xoshiro(24),
         device = device,
     )
     train_data_priori = dataloader_prior()
-    @test isa(train_data_priori[1], CuArray)
-    @test isa(train_data_priori[2], CuArray)
+    @test is_on_gpu(train_data_priori[1])
+    @test is_on_gpu(train_data_priori[2])
 
     l0 = CoupledNODE.loss_priori_lux(closure, θ, st, train_data_priori)[1]
     @test isnan(l0) == false

@@ -8,7 +8,7 @@ using Lux: Lux
 using CUDA
 using LuxCUDA
 using ConvolutionalNeuralOperators:
-    convolve, apply_masked_convolution, trim_kernel, get_kernel
+    convolve, apply_masked_convolution, trim_kernel, get_kernel, mask_kernel
 using Zygote: Zygote
 using Test  # Importing the Test module for @test statements
 using AbstractFFTs: fft, ifft

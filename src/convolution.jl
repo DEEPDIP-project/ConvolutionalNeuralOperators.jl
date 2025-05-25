@@ -66,7 +66,8 @@ function ChainRulesCore.rrule(::typeof(convolve), x, k)
     fft_k = fft(k, (2, 3))
 
     function convolve_pb(y_bar)
-        ffty_bar = fft(y_bar, (1, 2))
+        yb = unthunk(y_bar)
+        ffty_bar = fft(yb, (1, 2))
 
         if CUDA.functional() && k isa CuArray
             x_bar_re = CUDA.zeros(Float32, size(x))
@@ -150,15 +151,15 @@ end
 
 function apply_masked_convolution(y, k, mask)
     # to get the correct k i have to reshape+mask+trim
-    # TODO: i don't like this...
-    # ! Zygote does not like that you reuse variable names so, this makes it even uglier with the definition of k2 and k3
-    # ! also Zygote wants the mask to be explicitely defined as a vector so i have to pull it out from the tuple via mask=masks[i]
+    # ! Zygote does not like that you reuse variable names so k2 and k3 needs to be defined
+    # ! also Zygote wants the mask to be explicitely defined as a vector so mask_kernel is needed
 
     # Apply the mask to the kernel
     k2 = mask_kernel(k, mask)
 
-    # Adjust the kernel size to match the input dimensions
+    ## Adjust the kernel size to match the input dimensions
     k3 = trim_kernel(k2, size(y))
+    #k3 = k2
 
     # Apply the convolution
     y = convolve(y, k3)
@@ -178,18 +179,18 @@ end
 
 function ChainRulesCore.rrule(::typeof(trim_kernel), k, sizex)
     y = trim_kernel(k, sizex)
-    if k isa CuArray
-        k_bar = CUDA.zeros(Float32, size(k))
-    else
-        k_bar = zeros(Float32, size(k))
-    end
+    k_bar = similar(k, Float32)
 
     function trim_kernel_pullback(y_bar)
-        k_bar[:, 1:size(y_bar)[2], 1:size(y_bar)[3]] .= y_bar
+        yb = unthunk(y_bar)
+        sz2, sz3 = size(yb, 2), size(yb, 3)
+        k_bar .= 0  # clear first to be safe
+        k_bar[:, 1:sz2, 1:sz3] .= yb
         return NoTangent(), k_bar, NoTangent()
     end
     return y, trim_kernel_pullback
 end
+
 
 
 function mask_kernel(k, mask)
