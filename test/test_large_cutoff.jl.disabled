@@ -1,0 +1,57 @@
+#!/usr/bin/env julia
+
+using ConvolutionalNeuralOperators: create_filter
+using CairoMakie
+
+# Test what happens with cutoff > 1
+println("Testing sinc filter with cutoff > 1...")
+
+# Setup test parameters
+T = Float32
+N = 64
+grid = collect(0.0:(1.0/(N-1)):1.0)
+
+# Create a simple test image (checkerboard pattern)
+test_image = zeros(T, N, N, 1, 1)
+for i in 1:N, j in 1:N
+    if ((i ÷ 8) + (j ÷ 8)) % 2 == 0
+        test_image[i, j, 1, 1] = 1.0
+    end
+end
+
+# Test different cutoff values including > 1
+cutoff_values = [0.1, 0.5, 1.0, 2.0, 10.0, 100.0]
+
+fig = Figure(resolution = (1200, 400))
+
+# Original image
+ax_orig = Axis(fig[1, 1], title = "Original")
+heatmap!(ax_orig, test_image[:, :, 1, 1])
+
+for (i, cutoff) in enumerate(cutoff_values)
+    println("Testing cutoff = $cutoff")
+
+    # Create sinc filter with current cutoff
+    filter = create_filter(T, grid, cutoff, filter_type = "sinc", force_cpu = true)
+
+    # Apply filter
+    filtered_image = filter(test_image)
+
+    # Plot result
+    ax = Axis(fig[1, i+1], title = "Cutoff = $cutoff")
+    heatmap!(ax, filtered_image[:, :, 1, 1])
+end
+
+# Save the comparison
+save("large_cutoff_test.png", fig)
+println("Saved comparison to large_cutoff_test.png")
+
+# Also check the frequency response by looking at the sinc function values
+println("\nSinc function behavior:")
+for cutoff in cutoff_values
+    omega = cutoff * π
+    # Check sinc values at a few sample points
+    x_values = [0, 1, 2, 3]
+    sinc_values = [sinc(x * omega) for x in x_values]
+    println("Cutoff $cutoff (ω = $(omega/π)π): sinc values at x=[0,1,2,3] = $sinc_values")
+end
